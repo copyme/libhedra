@@ -35,154 +35,6 @@ namespace hedra
   {
     namespace cgal
     {
-      
-      struct EdgeData{
-        int ID;
-        bool isHex;
-        int OrigHalfedge;
-        bool isBoundary;
-        
-        EdgeData():ID(-1), isHex(false), OrigHalfedge(-1), isBoundary(false){}
-        ~EdgeData(){};
-      };
-      
-      class HexSegment{
-      public:
-        std::pair<int,int> Source;
-        std::pair<int,int> Target;
-        
-        HexSegment(int su, int sv, int tu, int tv){
-          std::pair<int,int> s(su,sv);
-          std::pair<int,int> t(tu,tv);
-          if (s<t){
-            Source=s;
-            Target=t;
-          }else{
-            Source=t;
-            Target=s;
-          }
-        }
-        
-        ~HexSegment(){}
-        
-        const bool operator<(const HexSegment& h) const {
-          if (Source<h.Source) return false;
-          if (Source>h.Source) return true;
-          
-          if (Target<h.Target) return false;
-          if (Target>h.Target) return true;
-          
-          return false; //both are equal
-        }
-        
-      };
-      
-      /*class Vertex{
-      public:
-        int ID;
-        static int RefCount;
-        Point3D Coordinates;
-        int AdjHalfedge;
-        
-        int AssocTriangle;  //for modifier vertices
-        
-        bool isHex;
-        bool Valid;
-        bool isHanging;  //for modifier vertices
-        
-        Vertex():ID(-1), AdjHalfedge(-1), isHex(false), Valid(true), isHanging(false){RefCount++;}
-        ~Vertex(){RefCount--;}
-      };
-      
-      class Halfedge{
-      public:
-        int ID;
-        static int RefCount;
-        int Origin;
-        int Next;
-        int Prev;
-        int Twin;
-        int AdjFace;
-        Point2D TexCoords;
-        bool isHex;
-        bool Valid;
-        
-        int OrigHalfedge;
-        
-        Halfedge():ID(-1), Origin(-1), Next(-1), Prev(-1), Twin(-1), AdjFace(-1), isHex(false), Valid(true), OrigHalfedge(-1){RefCount++;}
-        ~Halfedge(){RefCount--;}
-      };
-      
-      
-      class Face{
-      public:
-        int ID;
-        static int RefCount;
-        int AdjHalfedge;
-        Vector3D Normal;
-        Vector3D Centroid;
-        
-        int NumVertices;
-        int Vertices[60];
-        bool Valid;
-        
-        Face():ID(-1), AdjHalfedge(-1), NumVertices(-1), Valid(true){RefCount++;}
-        ~Face(){RefCount--;}
-      };
-      
-      class Mesh{
-      public:
-        
-        std::vector<Vertex> Vertices;
-        std::vector<Halfedge> Halfedges;
-        std::vector<Face> Faces;
-        
-        std::vector<int> TransVertices;
-        std::vector<int> InStrip;
-        std::vector<std::set<int> > VertexChains;
-        
-        std::ofstream DebugLog;
-        
-        void JoinFace(int heindex);
-        void UnifyEdges(int heindex);
-        bool CheckMesh();
-        void CleanMesh();
-        void ComputeTwins();
-        void WalkBoundary(int &CurrEdge);
-        void RemoveEdge(int heindex);
-        void RemoveFace(int findex, int heindex);
-        void TestUnmatchedTwins();
-        
-        void GenerateMesh(Mesh& HexMesh, double EdgeLength);
-        
-        void SimplifyHexMesh();
-        
-        void CreateStrips();
-        
-        void Clear(){Vertices.clear(); Halfedges.clear(); Faces.clear();}
-        
-        void Allocate(int NumofVertices, int NumofFaces, int NumofHEdges)
-        {
-          Vertices.resize(NumofVertices);
-          Faces.resize(NumofFaces);
-          Halfedges.resize(NumofHEdges);
-        }
-        
-        void ComputeNormals()
-        {
-          for (int i=0;i<Faces.size();i++){
-            Vector3D Vector1=Vertices[Faces[i].Vertices[1]].Coordinates-Vertices[Faces[i].Vertices[0]].Coordinates;
-            Vector3D Vector2=Vertices[Faces[i].Vertices[2]].Coordinates-Vertices[Faces[i].Vertices[0]].Coordinates;
-            Faces[i].Normal=CGAL::cross_product(Vector1,Vector2);
-            normalize(Faces[i].Normal);
-          }
-        }
-        
-        Mesh(){}
-        ~Mesh(){}
-        
-      };*/
-      
       const int PARAM_LINE_VERTEX = -2;
       const int ORIGINAL_VERTEX = -1;
       
@@ -284,35 +136,41 @@ namespace hedra
         }
       };
       
-      typedef CGAL::Arr_linear_traits_2<EKernel>                 Traits2;
-      typedef Traits2::Point_2                              Point2;
-      typedef Traits2::Segment_2                   Segment2;
-      typedef Traits2::Line_2                   Line2;
-      typedef Traits2::X_monotone_curve_2                  X_monotone_curve_2;
+      typedef CGAL::Arr_linear_traits_2<EKernel>                     Traits2;
+      typedef Traits2::Point_2                                       Point2;
+      typedef Traits2::Segment_2                                     Segment2;
+      typedef Traits2::Line_2                                        Line2;
+      typedef Traits2::X_monotone_curve_2                            X_monotone_curve_2;
       
       typedef CGAL::Arr_extended_dcel<Traits2, int,ArrEdgeData,int>  Dcel;
-      typedef CGAL::Arrangement_2<Traits2, Dcel>                  Arr_2;
-      typedef Arr_2::Face_iterator                          Face_iterator;
-      typedef Arr_2::Face_handle                            Face_handle;
-      typedef Arr_2::Edge_iterator                          Edge_iterator;
-      typedef Arr_2::Halfedge_iterator                      Halfedge_iterator;
-      typedef Arr_2::Vertex_iterator                        Vertex_iterator;
-      typedef Arr_2::Vertex_handle                          Vertex_handle;
-      typedef Arr_2::Halfedge_handle                        Halfedge_handle;
-      typedef Arr_2::Ccb_halfedge_circulator                Ccb_halfedge_circulator;
-      typedef Arr_mesh_generation_overlay_traits <Arr_2, Arr_2,Arr_2>  Overlay_traits;
-      
-      
-      //for now doing quad (u,v,-u -v) only!
-      Point2 paramCoord2texCoord(Eigen::RowVectorXd paramCoord, int Resolution)
+      typedef CGAL::Arrangement_2<Traits2, Dcel>                     Arr_2;
+      typedef Arr_2::Face_iterator                                   Face_iterator;
+      typedef Arr_2::Face_handle                                     Face_handle;
+      typedef Arr_2::Edge_iterator                                   Edge_iterator;
+      typedef Arr_2::Halfedge_iterator                               Halfedge_iterator;
+      typedef Arr_2::Vertex_iterator                                 Vertex_iterator;
+      typedef Arr_2::Vertex_handle                                   Vertex_handle;
+      typedef Arr_2::Halfedge_handle                                 Halfedge_handle;
+      typedef Arr_2::Ccb_halfedge_circulator                         Ccb_halfedge_circulator;
+      typedef Arr_mesh_generation_overlay_traits <Arr_2, Arr_2,Arr_2> Overlay_traits;
+
+      //for now doing quad (u,v,-u, -v) only!
+      Point2 paramCoord2texCoord(unsigned int N, Eigen::RowVectorXd paramCoord, int resolution)
       {
-        ENumber u=ENumber((int)(paramCoord(0)*(double)Resolution),Resolution);
-        ENumber v=ENumber((int)(paramCoord(1)*(double)Resolution),Resolution);
-        return Point2(u,v);
+        ENumber u, v;
+        if(N == 4)
+        {
+          // represent coordinates are rational numbers where resolution is the denominator and the first part is the numerator
+          u = ENumber((int) (paramCoord(0) * (double) resolution), resolution);
+          v = ENumber((int) (paramCoord(1) * (double) resolution), resolution);
+        }
+        else
+          throw std::runtime_error("You can generate only quad or hex meshes!");
+        return Point2(u, v);
       }
-      
-      IGL_INLINE void stitch_boundaries(const Eigen::VectorXi triEF,
-                                        const Eigen::VectorXi triInnerEdges,
+
+IGL_INLINE void stitch_boundaries(const Eigen::VectorXi triEF,
+                                  const Eigen::VectorXi triInnerEdges,
                                         Eigen::MatrixXd& currV,
                                        Eigen::VectorXi& VH,
                                        Eigen::VectorXi& HV,
@@ -368,7 +226,8 @@ namespace hedra
         }
         
       }
-      
+      // FTC #F list of face indicies into vertex texture coordinates – ? for each face's vertex gives a cooresponding index in the UVs?
+      //PC #PC by 2 -  double matrix of texture coordinates
       IGL_INLINE void generate_mesh(int N,
                                     const Eigen::MatrixXd& V,
                                     const Eigen::MatrixXi& F,
@@ -388,193 +247,226 @@ namespace hedra
         using namespace std;
         VectorXi VH;
         MatrixXi EH;
-        VectorXi HV,HE,HF,FH;
-        VectorXi nextH,prevH,twinH;
+        VectorXi HV, HE, HF, FH;
+        VectorXi nextH, prevH, twinH;
         
-        double minrange=(PC.colwise().maxCoeff()-PC.colwise().minCoeff()).minCoeff();
-        int resolution=pow(10,ceil(log10(100000/minrange)));
+        double minrange = (PC.colwise().maxCoeff() - PC.colwise().minCoeff()).minCoeff();
+        int resolution = pow(10, ceil(log10(100000. / minrange)));
         
        // hedra::DCEL(VectorXd::Constant(F.rows(),3),F,EV,EF,EFi,innerEdges,VH,EH,FH,HV,HE,HF,nextH,prevH,twinH);
         
         //creating an single-triangle arrangement
         
         //Intermediate growing DCEL
+        // this is used to store intermediate data related to the overlaying meshes
         std::vector<bool> isParamVertex;
         std::vector<int> DList;
         std::vector<int> HE2origEdges;
         std::vector<bool> isParamHE;
         std::vector<int> overlayFace2Triangle;
         
-        MatrixXd currV(isParamVertex.size(),3);
-        VH.resize(currV.rows());
-        HV.resize(HE2origEdges.size());
-        HF.resize(HE2origEdges.size());
+        MatrixXd currV(isParamVertex.size(), 3); // 0 x 3
+        VH.resize(currV.rows());  //0?
+        HV.resize(HE2origEdges.size()); //0?
+        HF.resize(HE2origEdges.size());  //0?
         FH.resize(0);
-        nextH.resize(HE2origEdges.size());
-        prevH.resize(HE2origEdges.size());
-        twinH.resize(HE2origEdges.size());
-        
-        for (int ti=0;ti<F.rows();ti++){
-          
+        nextH.resize(HE2origEdges.size()); //0?
+        prevH.resize(HE2origEdges.size()); //0?
+        twinH.resize(HE2origEdges.size()); //0?
+
+        //this loop is building an overlay face by face? I.e., we do not compute a general overlay for the whole mesh
+        // and instead we do this in a face by face manner.
+        for (int ti = 0; ti < F.rows(); ti++)
+        {
+          // we need two arangment for overlaying and the last two store the overlay
           Arr_2 paramArr, triangleArr, overlayArr;
-          
-          for (int j=0;j<3;j++){
-            RowVectorXd PC1 = PC.row(FPC(ti,j));
-            RowVectorXd PC2 = PC.row(FPC(ti,(j+1)%3));
-            
-            Halfedge_handle he=CGAL::insert_non_intersecting_curve(triangleArr, Segment2(paramCoord2texCoord(PC1,resolution),paramCoord2texCoord(PC2,resolution)));
+
+          // things computed in this loop are not used anywhere, OR they are in the triangleArr?
+          for (int j = 0; j < 3; j++)
+          {
+            // extract the edges of the parametrizaed mesh?
+            // what is PC?
+            RowVectorXd PC1 = PC.row(FPC(ti, j));
+            RowVectorXd PC2 = PC.row(FPC(ti, (j + 1) % 3));
+
+            // Segment2 represents a 2d line segment
+            // so we are building up CGAL representation of the parametrized mesh?
+            // we call with N == 4 because this gives just Point2(u, v) * resolution.
+            Halfedge_handle he = CGAL::insert_non_intersecting_curve(triangleArr, Segment2(paramCoord2texCoord(4, PC1, resolution), paramCoord2texCoord(4, PC2, resolution)));
             
             ArrEdgeData aed;
-            aed.isParam=false;
-            aed.origEdge =FE(ti,j);
+            aed.isParam = false;
+            aed.origEdge = FE(ti, j);
             he->set_data(aed);
             he->twin()->set_data(aed);
           }
-          
-          for (Face_iterator fi= triangleArr.faces_begin(); fi != triangleArr.faces_end(); fi++){
+
+          // checking for the face boundary?
+          for (Face_iterator fi = triangleArr.faces_begin(); fi != triangleArr.faces_end(); fi++)
+          {
+            // we should be rather calling set_data instead...
             if (fi->is_unbounded())
-              fi->data()=-1;
+              fi->data() = -1;
             else
-              fi->data()=ti;
+              fi->data() = ti; // setting the corresponding face ID?
           }
           
           //creating an arrangement of parameter lines
+          // extracting UVs per face's vertex?
           MatrixXd facePC(3, PC.cols());
-          for (int i=0;i<3;i++)
-              facePC.row(i)=PC.row(FPC(ti,i));
-          
-          for (int i=0;i<facePC.cols();i++){
+          for (int i = 0; i < 3; i++)
+            facePC.row(i) = PC.row(FPC(ti, i));
+
+          for (int i = 0;i < facePC.cols(); i++)
+          {
             //inserting unbounded lines
-            
             int coordMin = (int)std::floor(facePC.col(i).minCoeff()-1.0);
             int coordMax = (int)std::ceil(facePC.col(i).minCoeff()+1.0);
             vector<X_monotone_curve_2> lineCurves;
-            for (int coordIndex=coordMin;coordIndex<=coordMax;coordIndex++){
-              
+            for (int coordIndex = coordMin; coordIndex <= coordMax; coordIndex++)
+            {
               //The line coord = coordIndex
               RowVectorXd LineCoord1 = RowVectorXd::Zero(facePC.cols());
               RowVectorXd LineCoord2 = RowVectorXd::Ones(facePC.cols());
-              LineCoord1(i)=coordIndex;
-              LineCoord2(i)=coordIndex;
-              lineCurves.push_back(Line2(paramCoord2texCoord(LineCoord1,resolution), paramCoord2texCoord(LineCoord2,resolution)));
+              LineCoord1(i) = coordIndex;
+              LineCoord2(i) = coordIndex;
+              lineCurves.push_back(Line2(paramCoord2texCoord(4, LineCoord1,resolution),
+                                         paramCoord2texCoord(4, LineCoord2,resolution)));
             }
             insert(paramArr, lineCurves.begin(), lineCurves.end());
           }
-          
-          
+
           //Constructing the overlay arrangement
-          Overlay_traits ot;
-          overlay (triangleArr, paramArr, overlayArr, ot);
+          Overlay_traits ot; // what is this for, exactly?
+          overlay (triangleArr, paramArr, overlayArr, ot); // ok for this we need the two arragments.
+
+          // try to make this work until now.
+
+          /*
+           * not sure what is going on later on, it looks like the final mesh is updated
+           * but the invidual steps are not clear.
+           * I think I need to understand before I will be able to save the mesh and debug it
+           */
           
           //creating new halfedge structure from given mesh
           int formerNumVertices = currV.rows();
-          int formerNumHalfedges =nextH.rows();
-          int formerNumFaces =FH.rows();
+          int formerNumHalfedges = nextH.rows();
+          int formerNumFaces = FH.rows();
           
-          int currFace=0, currVertex=0, currHalfedge=0;
-          for (Face_iterator fi=overlayArr.faces_begin();fi!=overlayArr.faces_end();fi++){
-            if (fi->data()==-1)
+          int currFace = 0, currVertex = 0, currHalfedge = 0;
+
+          // what is going on here?
+          // iterate over faces in the overlay, which are all the faces in the overlay
+          for (Face_iterator fi = overlayArr.faces_begin(); fi != overlayArr.faces_end(); fi++)
+          {
+            if (fi->data() == -1) // unbounded face
               continue;  //one of the outer faces
-            
-            overlayFace2triangle.push_back(fi->data());
-            fi->data()=formerNumFaces+currFace;
+
+            // collect the face data (for what?)
+            overlayFace2Triangle.push_back(fi->data());
+            fi->data() = formerNumFaces + currFace; // why do we need to update this?, which face data do we update, overlay?
             currFace++;
-            int DFace=0;
-            Ccb_halfedge_circulator hebegin=fi->outer_ccb ();
-            Ccb_halfedge_circulator heiterate=hebegin;
+            int DFace = 0; // what is a DFace?
+            // iterate over the boundery of the face fi
+            Ccb_halfedge_circulator hebegin = fi->outer_ccb();
+            Ccb_halfedge_circulator heiterate = hebegin;
+
             do{
               DFace++;
-              if (heiterate->source()->data()<0){  //new vertex
-                
-                isParamVertex.push_back(heiterate->source()->data()==PARAM_LINE_VERTEX);
-                heiterate->source()->data()=formerNumVertices+currVertex;
+              // why do we need to update the source data here?
+              if (heiterate->source()->data() < 0) //new vertex
+              {
+                isParamVertex.push_back(heiterate->source()->data() == PARAM_LINE_VERTEX); // PARAM_LINE_VERTEX == -2
+                heiterate->source()->data() = formerNumVertices + currVertex;
                 currVertex++;
               }
               
-              if (heiterate->data().newHalfedge<0){  //new halfedge
+              if (heiterate->data().newHalfedge < 0) //new halfedge
+              {
                 HE2origEdges.push_back(heiterate->data().origEdge);
                 isParamHE.push_back(heiterate->data().isParam);
-                heiterate->data().newHalfedge=formerNumHalfedges+currHalfedge;
+                heiterate->data().newHalfedge = formerNumHalfedges + currHalfedge;
                 currHalfedge++;
               }
               heiterate++;
-            }while(heiterate!=hebegin);
-            
+            }while(heiterate != hebegin);
           }
           
-          currV.conservativeResize(currV.rows()+currVertex,3);
-          VH.conservativeResize(VH.size()+currVertex);
-          HV.conservativeResize(HV.size()+currHalfedge);
-          HF.conservativeResize(HF.size()+currHalfedge);
-          FH.conservativeResize(FH.size()+currFace);
-          nextH.conservativeResize(nextH.size()+currHalfedge);
-          prevH.conservativeResize(prevH.size()+currHalfedge);
-          twinH.conservativeResize(twinH.size()+currHalfedge);
-          
-          for (Face_iterator fi=overlayArr.faces_begin();fi!=overlayArr.faces_end();fi++){
-            if (fi->data()==-1)
+          currV.conservativeResize(currV.rows() + currVertex, 3);
+          VH.conservativeResize(VH.size() + currVertex);
+          HV.conservativeResize(HV.size() + currHalfedge);
+          HF.conservativeResize(HF.size() + currHalfedge);
+          FH.conservativeResize(FH.size() + currFace);
+          nextH.conservativeResize(nextH.size() + currHalfedge);
+          prevH.conservativeResize(prevH.size() + currHalfedge);
+          twinH.conservativeResize(twinH.size() + currHalfedge);
+
+          // again some operation on the half-edge data structure
+          for (Face_iterator fi = overlayArr.faces_begin(); fi != overlayArr.faces_end(); fi++)
+          {
+            if (fi->data() == -1)
               continue;  //one of the outer faces
             
-            Ccb_halfedge_circulator hebegin=fi->outer_ccb ();
-            Ccb_halfedge_circulator heiterate=hebegin;
+            Ccb_halfedge_circulator hebegin = fi->outer_ccb ();
+            Ccb_halfedge_circulator heiterate = hebegin;
             //now assigning nexts and prevs
             do{
               nextH(heiterate->data().newHalfedge) = heiterate->next()->data().newHalfedge;
               prevH(heiterate->data().newHalfedge) = heiterate->prev()->data().newHalfedge;
               twinH(heiterate->data().newHalfedge) = heiterate->twin()->data().newHalfedge;
-              if (heiterate->twin()->data().newHalfedge!=-1)
-               twinH(heiterate->twin()->data().newHalfedge) =heiterate->data().newHalfedge;
+              if (heiterate->twin()->data().newHalfedge != -1)
+               twinH(heiterate->twin()->data().newHalfedge) = heiterate->data().newHalfedge;
               
               HV(heiterate->data().newHalfedge) = heiterate->source()->data();
-              VH(heiterate->source()->data())=heiterate->data().newHalfedge;
+              VH(heiterate->source()->data()) = heiterate->data().newHalfedge;
               HF(heiterate->data().newHalfedge) = fi->data();
-              FH(fi->data())=heiterate->data().newHalfedge;
+              FH(fi->data()) = heiterate->data().newHalfedge;
               heiterate++;
-            }while (heiterate!=hebegin);
+            }while (heiterate != hebegin);
           }
           
           //constructing the actual vertices
-          for (Vertex_iterator vi=overlayArr.vertices_begin();vi!=overlayArr.vertices_end();vi++){
-            
-            if (vi->data()<0)
+          for (Vertex_iterator vi = overlayArr.vertices_begin(); vi != overlayArr.vertices_end(); vi++)
+          {
+            if (vi->data() < 0)
               continue;
             
-            ENumber BaryValues[3];
+            ENumber BaryValues[3] = {0};
+            ENumber Sum = 0;
             
-            ENumber Sum=0;
-            
-            for (int i=0;i<3;i++){
+            for (int i = 0; i < 3; i++)
+            {
               //finding out barycentric coordinates
-              RowVectorXd PC2 = PC.row(FPC(ti,(i+1)%3));
-              RowVectorXd PC3 = PC.row(FPC(ti,(i+2)%3));
-              ETriangle2D t(vi->point(), paramCoord2texCoord(PC2,resolution),  paramCoord2texCoord(PC3,resolution));
-              BaryValues[i]=t.area();
-              Sum+=BaryValues[i];
+              RowVectorXd PC2 = PC.row(FPC(ti,(i + 1) % 3));
+              RowVectorXd PC3 = PC.row(FPC(ti,(i + 2) % 3));
+              // !TODO: for now N == 4 but this should be ajusted, I think!
+              ETriangle2D t(vi->point(), paramCoord2texCoord(4, PC2, resolution),  paramCoord2texCoord(4, PC3, resolution));
+              BaryValues[i] = t.area();
+              Sum += BaryValues[i];
             }
                             
-            for (int i=0;i<3;i++)
-              BaryValues[i]/=Sum;
+            for (int i = 0; i < 3; i++)
+              BaryValues[i] /= Sum;
             
             EPoint3D ENewPosition(0,0,0);
-            for (int i=0;i<3;i++){
-              
-              EPoint3D vertexCoord(ENumber((int)(V(F(ti,i),0)*(double)resolution),resolution),
-                                   ENumber((int)(V(F(ti,i),1)*(double)resolution),resolution),
-                                   ENumber((int)(V(F(ti,i),2)*(double)resolution),resolution));
-              ENewPosition=ENewPosition+(vertexCoord-CGAL::ORIGIN)*BaryValues[i];
+            for (int i = 0; i < 3; i++)
+            {
+              EPoint3D vertexCoord(ENumber((int)(V(F(ti, i), 0) * (double)resolution),resolution),
+                                   ENumber((int)(V(F(ti, i), 1) * (double)resolution),resolution),
+                                   ENumber((int)(V(F(ti, i), 2) * (double)resolution),resolution));
+              ENewPosition = ENewPosition + (vertexCoord - CGAL::ORIGIN) * BaryValues[i];
             }
                           
             RowVector3d newPosition(to_double(ENewPosition.x()), to_double(ENewPosition.y()), to_double(ENewPosition.z()));
-            currV.row(vi->data())=newPosition;
-                            
-            //DebugLog<<"Creating Vertex "<<vi->data()<<" with 2D coordinates ("<<vi->point().x()<<","<<vi->point().y()<<") "<<" and 3D Coordinates ("<<std::setprecision(10) <<NewPosition.x()<<","<<NewPosition.y()<<","<<NewPosition.z()<<")\n";
+            currV.row(vi->data()) = newPosition;
           }
-        }
+        } // end of the main for loop, we should now have a full mesh but not stiched.
         
         //mesh unification
-        
-        stitch_boundaries(currV,VH,HV,HF,FH,nextH,prevH,twinH, isParamVertex, HE2origEdges, isParamHE, overlayFace2Triangle);
-        
+
+        // this is not finished anyways
+        //stitch_boundaries(currV, VH, HV, HF, FH, nextH, prevH, twinH, isParamVertex, HE2origEdges, isParamHE, overlayFace2Triangle, 0.001); // added tolerance, still mising two first params
+
         //consolidation
         newV=currV;
       
