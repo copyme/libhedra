@@ -27,8 +27,6 @@
 #include <hedra/dcel.h>
 #include <vector>
 
-
-
 namespace hedra
 {
   namespace copyleft
@@ -169,62 +167,111 @@ namespace hedra
         return Point2(u, v);
       }
 
-IGL_INLINE void stitch_boundaries(const Eigen::VectorXi triEF,
-                                  const Eigen::VectorXi triInnerEdges,
-                                        Eigen::MatrixXd& currV,
-                                       Eigen::VectorXi& VH,
-                                       Eigen::VectorXi& HV,
-                                       Eigen::VectorXi& HF,
-                                       Eigen::VectorXi& FH,
-                                       Eigen::VectorXi& nextH,
-                                       Eigen::VectorXi& prevH,
-                                       Eigen::VectorXi& twinH,
-                                       std::vector<bool>& isParamVertex,
-                                       std::vector<int>& HE2origEdges,
-                                       std::vector<bool>& isParamHE,
-                                       std::vector<int>& overlayFace2Tri,
-                                       const double closeTolerance)
+      // connect between mesh's paches
+IGL_INLINE void stitch_boundaries(const Eigen::MatrixXi triEF, // triangle mesh information
+                                  const Eigen::VectorXi triInnerEdges, // triangle mesh info
+                                  const Eigen::MatrixXi& triEV,
+                                  const Eigen::MatrixXd& triV,
+                                  Eigen::MatrixXd& currV,
+                                  Eigen::VectorXi& VH,
+                                  Eigen::VectorXi& HV,
+                                  Eigen::VectorXi& HF, // map between half-edges and their left faces
+                                  Eigen::VectorXi& FH,
+                                  Eigen::VectorXi& nextH,
+                                  Eigen::VectorXi& prevH,
+                                  Eigen::VectorXi& twinH,
+                                  std::vector<bool>& isParamVertex,
+                                  std::vector<int>& HE2origEdges,
+                                  std::vector<bool>& isParamHE,
+                                  //each face of the arrangment has id of the corresponding tri face or -1 when unbounded (?)
+                                  std::vector<int>& overlayFace2Tri,
+                                  const double closeTolerance)
       {
-
         using namespace Eigen;
         
         //TODO: tie all endpoint vertices to original triangles
-        
-        VectorXi old2NewV=VectorXi::Constant(currV.rows(),-1);
-        
-        std::vector<std::vector<int>> origEdges2HE(triEF.rows());
-        for (int i=0;i<HE2origEdges.size();i++)
+
+        //map between old and new vertices?
+        VectorXi old2NewV = VectorXi::Constant(currV.rows(), -1);
+
+        // new edges if they coincide with the old edges will know about this relation
+        std::vector<std::vector<int> > origEdges2HE(triEF.rows());
+        for (size_t i = 0; i < HE2origEdges.size(); i++)
+        {
+          if(HE2origEdges[i] == -1)
+            continue;
+          // for each old edge we collect coinciding new half-edges
           origEdges2HE[HE2origEdges[i]].push_back(i);
-        
-        
-        
-        
-        //for every original inner edge, stitching up boundary (original boundary edges don't have any action item)
-        for (int i=0;i<triInnerEdges.size();i++){
+        }
+
+        // for inner original edges we find left and right faces
+        for (unsigned int i = 0; i < triInnerEdges.rows(); i++)
+        {
           //first sorting to left and right edges according to faces
-          int currEdge=triInnerEdges(i);
-          
-          int leftFace=triEF(currEdge,0);
-          int rightFace=triEF(currEdge,1);
+          int currEdge = triInnerEdges(i);
+          int leftFace = triEF(currEdge, 0);
+          int rightFace = triEF(currEdge, 1);
           
           std::vector<int> leftHE, rightHE;
-          
-          for (int k=0;k<origEdges2HE[currEdge].size();k++){
-            if (overlayFace2Tri[HF(origEdges2HE[currEdge][k])]==leftFace)
+          //for each old-inner edge we split its colinear half-edges into left and right with respect the respective faces
+          for (size_t k = 0; k < origEdges2HE[currEdge].size(); k++)
+          {
+            // inner half-edges always has a face to its left
+            if (overlayFace2Tri[HF(origEdges2HE[currEdge][k])] == leftFace)
               leftHE.push_back(origEdges2HE[currEdge][k]);
-            else if (overlayFace2Tri[HF(origEdges2HE[currEdge][k])]==rightFace)
+            else if (overlayFace2Tri[HF(origEdges2HE[currEdge][k])] == rightFace)
               rightHE.push_back(origEdges2HE[currEdge][k]);
             else
-              int kaka=8;  //shouldn't happen
-            
+              throw std::runtime_error("stitch_boundaries: left-right mismatch!");
           }
-          
           //if the parameterization is seamless, left and right halfedges should be perfectly matched, but it's not always the case
-         
-    
-          
+
+          //get the source vertex of the original edge
+          Eigen::Vector3d v = triV.row(triEV(currEdge, 0));
+          Eigen::Vector3d vp = triV.row(triEV(currEdge, 1));
+
+          std::cout << "V " << v.transpose() << std::endl;
+          std::cout << "VP " << vp.transpose() << std::endl;
+
+          //find the new half-edge which source is closest to v.
+          std::vector<double> distV(leftHE.size());
+          std::vector<double> distVP(leftHE.size());
+          for(size_t k = 0; k < leftHE.size(); k++)
+          {
+              Eigen::Vector3d vhe = currV.row(HV(leftHE[k]));
+              distV[k] = (v - vhe).norm();
+              distVP[k] = (vp - vhe).norm();
+          }
+          int llID = std::distance(distV.begin(), std::min_element(distV.begin(), distV.end()));
+          int lrID = std::distance(distVP.begin(), std::min_element(distVP.begin(), distVP.end()));
+          int lID = -1;
+          bool isVLeft = false;
+          if(currV.row(HV(leftHE[llID])).norm() < currV.row(HV(leftHE[lrID])).norm())
+          {
+            lID = llID;
+            isVLeft = true;
+          }
+          else
+           lID = lrID;
+
+          distV.resize(rightHE.size());
+          distVP.resize(rightHE.size());
+          for(size_t k = 0; k < rightHE.size(); k++)
+          {
+            Eigen::Vector3d vhe = currV.row(HV(rightHE[k]));
+            distV[k] = (v - vhe).norm();
+            distVP[k] = (vp - vhe).norm();
+          }
+          int rID = -1;
+          if(isVLeft)
+            rID = std::distance(distVP.begin(), std::min_element(distVP.begin(), distVP.end()));
+          else
+            rID = std::distance(distV.begin(), std::min_element(distV.begin(), distV.end()));
+
+          std::cout << "l " << currV.row(HV(leftHE[lID])) << std::endl;
+          std::cout << "r " << currV.row(HV(rightHE[rID])) << std::endl;
+          //exit(1);
         }
-        
       }
       // FTC #F list of face indicies into vertex texture coordinates – ? for each face's vertex gives a cooresponding index in the UVs?
       //PC #PC by 2 -  double matrix of texture coordinates
@@ -252,8 +299,6 @@ IGL_INLINE void stitch_boundaries(const Eigen::VectorXi triEF,
         
         double minrange = (PC.colwise().maxCoeff() - PC.colwise().minCoeff()).minCoeff();
         int resolution = pow(10, ceil(log10(100000. / minrange)));
-        
-       // hedra::DCEL(VectorXd::Constant(F.rows(),3),F,EV,EF,EFi,innerEdges,VH,EH,FH,HV,HE,HF,nextH,prevH,twinH);
         
         //creating an single-triangle arrangement
         
@@ -343,9 +388,8 @@ IGL_INLINE void stitch_boundaries(const Eigen::VectorXi triEF,
           // try to make this work until now.
 
           /*
-           * not sure what is going on later on, it looks like the final mesh is updated
-           * but the invidual steps are not clear.
-           * I think I need to understand before I will be able to save the mesh and debug it
+           * here the cgal half-edge structure is converted into the headra one,
+           * after the two loops below we get a patch of the mesh where things are properly connected
            */
           
           //creating new halfedge structure from given mesh
@@ -383,6 +427,7 @@ IGL_INLINE void stitch_boundaries(const Eigen::VectorXi triEF,
               
               if (heiterate->data().newHalfedge < 0) //new halfedge
               {
+                //std::cout << "orig edge: " << heiterate->data().origEdge << " param " << heiterate->data().isParam << std::endl;
                 HE2origEdges.push_back(heiterate->data().origEdge);
                 isParamHE.push_back(heiterate->data().isParam);
                 heiterate->data().newHalfedge = formerNumHalfedges + currHalfedge;
@@ -424,6 +469,8 @@ IGL_INLINE void stitch_boundaries(const Eigen::VectorXi triEF,
               heiterate++;
             }while (heiterate != hebegin);
           }
+
+          // after these two loops a patch is correctly connected?
           
           //constructing the actual vertices
           for (Vertex_iterator vi = overlayArr.vertices_begin(); vi != overlayArr.vertices_end(); vi++)
@@ -465,7 +512,7 @@ IGL_INLINE void stitch_boundaries(const Eigen::VectorXi triEF,
         //mesh unification
 
         // this is not finished anyways
-        //stitch_boundaries(currV, VH, HV, HF, FH, nextH, prevH, twinH, isParamVertex, HE2origEdges, isParamHE, overlayFace2Triangle, 0.001); // added tolerance, still mising two first params
+        stitch_boundaries(EF, innerEdges, EV, V, currV, VH, HV, HF, FH, nextH, prevH, twinH, isParamVertex, HE2origEdges, isParamHE, overlayFace2Triangle, 0.0001); // added tolerance, still mising two first params
 
         //consolidation
         newV=currV;
