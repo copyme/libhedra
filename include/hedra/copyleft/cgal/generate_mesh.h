@@ -172,6 +172,7 @@ IGL_INLINE void stitch_boundaries(const Eigen::MatrixXi triEF, // triangle mesh 
                                   const Eigen::VectorXi triInnerEdges, // triangle mesh info
                                   const Eigen::MatrixXi& triEV,
                                   const Eigen::MatrixXd& triV,
+                                  const Eigen::MatrixXi& triF,
                                   Eigen::MatrixXd& currV,
                                   Eigen::VectorXi& VH,
                                   Eigen::VectorXi& HV,
@@ -224,6 +225,23 @@ IGL_INLINE void stitch_boundaries(const Eigen::MatrixXi triEF, // triangle mesh 
             else
               throw std::runtime_error("stitch_boundaries: left-right mismatch!");
           }
+
+          std::cout << "left F" << std::endl;
+          std::cout << triV.row(triF(leftFace, 0)) << std::endl;
+          std::cout << triV.row(triF(leftFace, 1)) << std::endl;
+          std::cout << triV.row(triF(leftFace, 2)) << std::endl;
+
+          std::cout << "right F" << std::endl;
+          std::cout << triV.row(triF(rightFace, 0)) << std::endl;
+          std::cout << triV.row(triF(rightFace, 1)) << std::endl;
+          std::cout << triV.row(triF(rightFace, 2)) << std::endl;
+
+
+          std::cout << "edge" << std::endl;
+          std::cout << triV.row(triEV(currEdge, 0)) << std::endl;
+          std::cout << triV.row(triEV(currEdge, 1)) << std::endl;
+          //sort
+
           //if the parameterization is seamless, left and right halfedges should be perfectly matched, but it's not always the case
 
           //get the source vertex of the original edge
@@ -246,7 +264,7 @@ IGL_INLINE void stitch_boundaries(const Eigen::MatrixXi triEF, // triangle mesh 
           int lrID = std::distance(distVP.begin(), std::min_element(distVP.begin(), distVP.end()));
           int lID = -1;
           bool isVLeft = false;
-          if(currV.row(HV(leftHE[llID])).norm() < currV.row(HV(leftHE[lrID])).norm())
+          if(distV[llID] < distVP[lrID])
           {
             lID = llID;
             isVLeft = true;
@@ -268,9 +286,83 @@ IGL_INLINE void stitch_boundaries(const Eigen::MatrixXi triEF, // triangle mesh 
           else
             rID = std::distance(distV.begin(), std::min_element(distV.begin(), distV.end()));
 
-          std::cout << "l " << currV.row(HV(leftHE[lID])) << std::endl;
-          std::cout << "r " << currV.row(HV(rightHE[rID])) << std::endl;
-          //exit(1);
+          //std::cout << "l " << currV.row(HV(leftHE[lID])) << " ID " << lID << " size " << leftHE.size() << std::endl;
+          //std::cout << "r " << currV.row(HV(rightHE[rID])) << " ID " << rID << " size " << rightHE.size() << std::endl;
+          // sort edges with respect to the closest vertices
+
+          std::iter_swap(leftHE.begin(), leftHE.begin() + lID);
+          for(size_t k = 0; k < leftHE.size() - 1; k++)
+          {
+            Eigen::Vector3d v = currV.row(HV(leftHE[k]));
+            int next = -1;
+            double minN = 10000;
+            for(size_t h = k + 1; h < leftHE.size() - 1; h++)
+            {
+              Eigen::Vector3d vp = currV.row(HV(leftHE[h]));
+              double normT = (v - vp).norm();
+              if(normT < minN)
+              {
+                minN = normT;
+                next = h;
+              }
+            }
+            if(next != -1)
+              std::iter_swap(leftHE.begin() + k + 1, leftHE.begin() + next);
+          }
+
+          //sort right
+          std::iter_swap(rightHE.begin(), rightHE.begin() + rID);
+          for(size_t k = 0; k < rightHE.size() - 1; k++)
+          {
+            Eigen::Vector3d v = currV.row(HV(rightHE[k]));
+            int next = -1;
+            double minN = 10000;
+            for(size_t h = k + 1; h < rightHE.size() - 1; h++)
+            {
+              Eigen::Vector3d vp = currV.row(HV(rightHE[h]));
+              double normT = (v - vp).norm();
+              if(normT < minN)
+              {
+                minN = normT;
+                next = h;
+              }
+            }
+            if(next != -1)
+              std::iter_swap(rightHE.begin() + k + 1, rightHE.begin() + next);
+          }
+
+//          std::cout << "start" << std::endl;
+//          // check if the sorting went OK
+//          for(size_t k = 0; k < leftHE.size() - 1; k++)
+//            std::cout << "First L: " << leftHE[k] << " next: " << nextH(leftHE[k]) << " next in L: " << leftHE[k+1] << std::endl;
+//          for(size_t k = 0; k < rightHE.size() - 1; k++)
+//            std::cout << "First R: " << rightHE[k] << " next: " << nextH(rightHE[k]) << " next in R: " << rightHE[k+1] << std::endl;
+
+          std::cout << "start left" << std::endl;
+          for(size_t k = 0; k < leftHE.size(); k++)
+          {
+            std::cout << currV.row(HV(leftHE[k])) << std::endl;
+          }
+
+          std::cout << "start right" << std::endl;
+          for(size_t k = 0; k < rightHE.size(); k++)
+          {
+            std::cout << currV.row(HV(rightHE[k])) << std::endl;
+          }
+
+          std::cout << "next left" << std::endl;
+          for(size_t k = 0; k < leftHE.size(); k++)
+          {
+            std::cout << currV.row(HV(nextH(leftHE[k]))) << std::endl;
+          }
+
+          std::cout << "next right" << std::endl;
+          for(size_t k = 0; k < rightHE.size(); k++)
+          {
+            std::cout << currV.row(HV(nextH(rightHE[k]))) << std::endl;
+          }
+
+          exit(1);
         }
       }
       // FTC #F list of face indicies into vertex texture coordinates – ? for each face's vertex gives a cooresponding index in the UVs?
@@ -512,7 +604,7 @@ IGL_INLINE void stitch_boundaries(const Eigen::MatrixXi triEF, // triangle mesh 
         //mesh unification
 
         // this is not finished anyways
-        stitch_boundaries(EF, innerEdges, EV, V, currV, VH, HV, HF, FH, nextH, prevH, twinH, isParamVertex, HE2origEdges, isParamHE, overlayFace2Triangle, 0.0001); // added tolerance, still mising two first params
+        stitch_boundaries(EF, innerEdges, EV, V, F, currV, VH, HV, HF, FH, nextH, prevH, twinH, isParamVertex, HE2origEdges, isParamHE, overlayFace2Triangle, 0.0001); // added tolerance, still mising two first params
 
         //consolidation
         newV=currV;
