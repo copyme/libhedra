@@ -226,20 +226,6 @@ IGL_INLINE void stitch_boundaries(const Eigen::MatrixXi triEF, // triangle mesh 
               throw std::runtime_error("stitch_boundaries: left-right mismatch!");
           }
 
-          std::cout << "left F" << std::endl;
-          std::cout << triV.row(triF(leftFace, 0)) << std::endl;
-          std::cout << triV.row(triF(leftFace, 1)) << std::endl;
-          std::cout << triV.row(triF(leftFace, 2)) << std::endl;
-
-          std::cout << "right F" << std::endl;
-          std::cout << triV.row(triF(rightFace, 0)) << std::endl;
-          std::cout << triV.row(triF(rightFace, 1)) << std::endl;
-          std::cout << triV.row(triF(rightFace, 2)) << std::endl;
-
-
-          std::cout << "edge" << std::endl;
-          std::cout << triV.row(triEV(currEdge, 0)) << std::endl;
-          std::cout << triV.row(triEV(currEdge, 1)) << std::endl;
           //sort
 
           //if the parameterization is seamless, left and right halfedges should be perfectly matched, but it's not always the case
@@ -248,8 +234,6 @@ IGL_INLINE void stitch_boundaries(const Eigen::MatrixXi triEF, // triangle mesh 
           Eigen::Vector3d v = triV.row(triEV(currEdge, 0));
           Eigen::Vector3d vp = triV.row(triEV(currEdge, 1));
 
-          std::cout << "V " << v.transpose() << std::endl;
-          std::cout << "VP " << vp.transpose() << std::endl;
 
           //find the new half-edge which source is closest to v.
           std::vector<double> distV(leftHE.size());
@@ -290,13 +274,14 @@ IGL_INLINE void stitch_boundaries(const Eigen::MatrixXi triEF, // triangle mesh 
           //std::cout << "r " << currV.row(HV(rightHE[rID])) << " ID " << rID << " size " << rightHE.size() << std::endl;
           // sort edges with respect to the closest vertices
 
+          //sorting left
           std::iter_swap(leftHE.begin(), leftHE.begin() + lID);
           for(size_t k = 0; k < leftHE.size() - 1; k++)
           {
             Eigen::Vector3d v = currV.row(HV(leftHE[k]));
             int next = -1;
             double minN = 10000;
-            for(size_t h = k + 1; h < leftHE.size() - 1; h++)
+            for(size_t h = k + 1; h < leftHE.size(); h++)
             {
               Eigen::Vector3d vp = currV.row(HV(leftHE[h]));
               double normT = (v - vp).norm();
@@ -317,7 +302,7 @@ IGL_INLINE void stitch_boundaries(const Eigen::MatrixXi triEF, // triangle mesh 
             Eigen::Vector3d v = currV.row(HV(rightHE[k]));
             int next = -1;
             double minN = 10000;
-            for(size_t h = k + 1; h < rightHE.size() - 1; h++)
+            for(size_t h = k + 1; h < rightHE.size(); h++)
             {
               Eigen::Vector3d vp = currV.row(HV(rightHE[h]));
               double normT = (v - vp).norm();
@@ -331,38 +316,46 @@ IGL_INLINE void stitch_boundaries(const Eigen::MatrixXi triEF, // triangle mesh 
               std::iter_swap(rightHE.begin() + k + 1, rightHE.begin() + next);
           }
 
-//          std::cout << "start" << std::endl;
-//          // check if the sorting went OK
-//          for(size_t k = 0; k < leftHE.size() - 1; k++)
-//            std::cout << "First L: " << leftHE[k] << " next: " << nextH(leftHE[k]) << " next in L: " << leftHE[k+1] << std::endl;
-//          for(size_t k = 0; k < rightHE.size() - 1; k++)
-//            std::cout << "First R: " << rightHE[k] << " next: " << nextH(rightHE[k]) << " next in R: " << rightHE[k+1] << std::endl;
-
-          std::cout << "start left" << std::endl;
-          for(size_t k = 0; k < leftHE.size(); k++)
+          if(leftHE.size() > 2)
           {
-            std::cout << currV.row(HV(leftHE[k])) << std::endl;
-          }
+            std::cout << "V " << v.transpose() << std::endl;
+            std::cout << "VP " << vp.transpose() << std::endl;
 
-          std::cout << "start right" << std::endl;
-          for(size_t k = 0; k < rightHE.size(); k++)
-          {
-            std::cout << currV.row(HV(rightHE[k])) << std::endl;
-          }
+            std::cout << "left F" << std::endl;
+            std::cout << triV.row(triF(leftFace, 0)) << std::endl;
+            std::cout << triV.row(triF(leftFace, 1)) << std::endl;
+            std::cout << triV.row(triF(leftFace, 2)) << std::endl;
 
-          std::cout << "next left" << std::endl;
-          for(size_t k = 0; k < leftHE.size(); k++)
-          {
-            std::cout << currV.row(HV(nextH(leftHE[k]))) << std::endl;
-          }
+            std::cout << "right F" << std::endl;
+            std::cout << triV.row(triF(rightFace, 0)) << std::endl;
+            std::cout << triV.row(triF(rightFace, 1)) << std::endl;
+            std::cout << triV.row(triF(rightFace, 2)) << std::endl;
 
-          std::cout << "next right" << std::endl;
-          for(size_t k = 0; k < rightHE.size(); k++)
-          {
-            std::cout << currV.row(HV(nextH(rightHE[k]))) << std::endl;
-          }
+            std::cout << "edge" << std::endl;
+            std::cout << triV.row(triEV(currEdge, 0)) << std::endl;
+            std::cout << triV.row(triEV(currEdge, 1)) << std::endl;
 
-          exit(1);
+            std::cout << "start left" << std::endl;
+            for (size_t k = 0; k < leftHE.size(); k++) {
+              std::cout << currV.row(HV(leftHE[k])) << std::endl;
+            }
+
+            std::cout << "start right" << std::endl;
+            for (size_t k = 0; k < rightHE.size(); k++) {
+              std::cout << currV.row(HV(rightHE[k])) << std::endl;
+            }
+
+            std::cout << "next left" << std::endl;
+            for (size_t k = 0; k < leftHE.size(); k++) {
+              std::cout << currV.row(HV(nextH(leftHE[k]))) << std::endl;
+            }
+
+            std::cout << "next right" << std::endl;
+            for (size_t k = 0; k < rightHE.size(); k++) {
+              std::cout << currV.row(HV(nextH(rightHE[k]))) << std::endl;
+            }
+            exit(1);
+          }
         }
       }
       // FTC #F list of face indicies into vertex texture coordinates – ? for each face's vertex gives a cooresponding index in the UVs?
