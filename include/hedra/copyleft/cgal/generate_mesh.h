@@ -354,6 +354,20 @@ IGL_INLINE void stitch_boundaries(const Eigen::MatrixXi triEF, // triangle mesh 
             for (size_t k = 0; k < rightHE.size(); k++) {
               std::cout << currV.row(HV(nextH(rightHE[k]))) << std::endl;
             }
+
+            std::cout << "prev left" << std::endl;
+            int lprev = prevH(leftHE[0]);
+            for (size_t k = 0; k < leftHE.size(); k++) {
+              std::cout << currV.row(HV(lprev)) << " is param V: " << isParamVertex[HV(lprev)] << " is param HE " << isParamHE[lprev] << std::endl;
+              lprev = prevH(lprev);
+            }
+
+            int rprev = prevH(rightHE[0]);
+            std::cout << "prev right" << std::endl;
+            for (size_t k = 0; k < rightHE.size(); k++) {
+              std::cout << currV.row(HV(rprev)) << " is param V: " << isParamVertex[HV(rprev)] << " is param HE " << isParamHE[rprev] << std::endl;
+              rprev = prevH(rprev);
+            }
             exit(1);
           }
         }
