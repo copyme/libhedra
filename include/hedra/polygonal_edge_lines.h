@@ -38,7 +38,8 @@ namespace hedra
                                        int res,
                                        Eigen::MatrixXd &VPolyLines,
                                        Eigen::MatrixXi &FPolyLines,
-                                       Eigen::MatrixXd &CPolyLines)
+                                       Eigen::MatrixXd &CPolyLines,
+                                       Eigen::RowVector3d color = hedra::default_edge_color())
   {
     
     Eigen::MatrixXd P1(EV.rows(),3), P2(EV.rows(),3);
@@ -47,7 +48,7 @@ namespace hedra
       P2.row(i)=V.row(EV(i,1));
     }
     
-    hedra::line_cylinders(P1, P2, width, hedra::default_edge_color().replicate(P1.rows(),1), res, VPolyLines, FPolyLines, CPolyLines);
+    hedra::line_cylinders(P1, P2, width, color.replicate(P1.rows(),1), res, VPolyLines, FPolyLines, CPolyLines);
   }
   
   

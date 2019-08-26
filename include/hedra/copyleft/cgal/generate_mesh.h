@@ -321,12 +321,12 @@ IGL_INLINE void stitch_boundaries(const Eigen::MatrixXi triEF, // triangle mesh 
             std::cout << "V " << v.transpose() << std::endl;
             std::cout << "VP " << vp.transpose() << std::endl;
 
-            std::cout << "left F" << std::endl;
+            std::cout << "left F ID " << leftFace << std::endl;
             std::cout << triV.row(triF(leftFace, 0)) << std::endl;
             std::cout << triV.row(triF(leftFace, 1)) << std::endl;
             std::cout << triV.row(triF(leftFace, 2)) << std::endl;
 
-            std::cout << "right F" << std::endl;
+            std::cout << "right F ID " << rightFace << std::endl;
             std::cout << triV.row(triF(rightFace, 0)) << std::endl;
             std::cout << triV.row(triF(rightFace, 1)) << std::endl;
             std::cout << triV.row(triF(rightFace, 2)) << std::endl;
@@ -359,6 +359,8 @@ IGL_INLINE void stitch_boundaries(const Eigen::MatrixXi triEF, // triangle mesh 
             int lprev = prevH(leftHE[0]);
             for (size_t k = 0; k < leftHE.size(); k++) {
               std::cout << currV.row(HV(lprev)) << " is param V: " << isParamVertex[HV(lprev)] << " is param HE " << isParamHE[lprev] << std::endl;
+              if(twinH(lprev) != -1 )
+                std::cout << "twin: " << currV.row(HV(twinH(lprev))) << std::endl;
               lprev = prevH(lprev);
             }
 
@@ -366,9 +368,11 @@ IGL_INLINE void stitch_boundaries(const Eigen::MatrixXi triEF, // triangle mesh 
             std::cout << "prev right" << std::endl;
             for (size_t k = 0; k < rightHE.size(); k++) {
               std::cout << currV.row(HV(rprev)) << " is param V: " << isParamVertex[HV(rprev)] << " is param HE " << isParamHE[rprev] << std::endl;
+              if(twinH(rprev) != -1 )
+                std::cout << "twin: " << currV.row(HV(twinH(rprev))) << std::endl;
               rprev = prevH(rprev);
             }
-            exit(1);
+           // exit(1);
           }
         }
       }
@@ -391,8 +395,8 @@ IGL_INLINE void stitch_boundaries(const Eigen::MatrixXi triEF, // triangle mesh 
         
         using namespace Eigen;
         using namespace std;
-        VectorXi VH;
         MatrixXi EH;
+        VectorXi VH;
         VectorXi HV, HE, HF, FH;
         VectorXi nextH, prevH, twinH;
         
@@ -611,7 +615,7 @@ IGL_INLINE void stitch_boundaries(const Eigen::MatrixXi triEF, // triangle mesh 
         //mesh unification
 
         // this is not finished anyways
-        stitch_boundaries(EF, innerEdges, EV, V, F, currV, VH, HV, HF, FH, nextH, prevH, twinH, isParamVertex, HE2origEdges, isParamHE, overlayFace2Triangle, 0.0001); // added tolerance, still mising two first params
+        //stitch_boundaries(EF, innerEdges, EV, V, F, currV, VH, HV, HF, FH, nextH, prevH, twinH, isParamVertex, HE2origEdges, isParamHE, overlayFace2Triangle, 0.0001); // added tolerance, still mising two first params
 
         //consolidation
         newV=currV;
