@@ -2,6 +2,7 @@
 #include <igl/opengl/glfw/Viewer.h>
 #include <igl/readDMAT.h>
 #include <igl/jet.h>
+#include <igl/avg_edge_length.h>
 #include <hedra/polygonal_read_OFF.h>
 #include <hedra/triangulate_mesh.h>
 #include <hedra/polygonal_edge_topology.h>
@@ -53,7 +54,7 @@ bool UpdateCurrentView(igl::opengl::glfw::Viewer & viewer)
   sphereGreens.col(2).setZero();
   
   MatrixXd VHandles;
-  MatrixXi THandles;
+  MatrixXi FHandles;
   MatrixXd CHandles;
   
   //hedra::point_spheres(bc, sphereRadius, sphereGreens, 10,VHandle, THandle, CHandle);
@@ -80,8 +81,8 @@ bool UpdateCurrentView(igl::opengl::glfw::Viewer & viewer)
   
   viewer.data_list[1].clear();
   viewer.data_list[1].show_lines=false;
-  viewer.data_list[1].set_mesh(VHandle,THandle);
-  viewer.data_list[1].set_colors(CHandle);
+  viewer.data_list[1].set_mesh(VHandles,FHandles);
+  viewer.data_list[1].set_colors(CHandles);
   
   return true;
 }
