@@ -297,6 +297,10 @@ namespace hedra {
              */
             RowVectorXd PC1 = PC.row(FPC(ti, j));
             RowVectorXd PC2 = PC.row(FPC(ti, (j + 1) % 3));
+
+            //avoid degenerate cases in non-bijective parametrizations
+            if(paramCoord2texCoord(PC1, resolution) == paramCoord2texCoord(PC2, resolution))
+              throw std::runtime_error("Directional::generate_mesh: Only bijective parametrizations are supported, sorry!");
             Halfedge_handle he = CGAL::insert_non_intersecting_curve(triangleArr, Segment2(paramCoord2texCoord(PC1, resolution), paramCoord2texCoord(PC2, resolution)));
             ArrEdgeData aed;
             aed.isParam = false;
@@ -319,6 +323,7 @@ namespace hedra {
           for (int i = 0; i < 3; i++)
             facePC.row(i) = PC.row(FPC(ti, i));
 
+          // TODO: this part has to be adjusted for the hexes by adding familes of parallel lines
           for (int i = 0; i < facePC.cols(); i++)
           {
             //inserting unbounded lines
@@ -354,9 +359,9 @@ namespace hedra {
               continue;  //one of the outer faces, i.e., unbounded
 
             overlayFace2Triangle.push_back(fi->data());
-            fi->data() = formerNumFaces + currFace;
+            fi->data() = formerNumFaces + currFace; // the id of a new face?
             currFace++;
-            int DFace = 0;
+            int DFace = 0; //???
             Ccb_halfedge_circulator hebegin = fi->outer_ccb();
             Ccb_halfedge_circulator heiterate = hebegin;
             do
@@ -364,8 +369,9 @@ namespace hedra {
               DFace++;
               if (heiterate->source()->data() < 0)  //new vertex
               {
-                isParamVertex.push_back(heiterate->source()->data() == PARAM_LINE_VERTEX);
-                heiterate->source()->data() = formerNumVertices + currVertex;
+                // information if an edge starting from this vertex is the parameter line
+                isParamVertex.push_back(heiterate->source()->data() == PARAM_LINE_VERTEX); //source is the source vertex
+                heiterate->source()->data() = formerNumVertices + currVertex; // the id of the new vertex ????
                 currVertex++;
               }
 
