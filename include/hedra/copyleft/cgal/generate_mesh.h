@@ -263,7 +263,6 @@ namespace hedra {
         VectorXi nextH, prevH, twinH;
 
         double minrange = (PC.colwise().maxCoeff() - PC.colwise().minCoeff()).minCoeff();
-        //TODO: the resoltuion has to be the same as the parametrization resolution, so we will be able to overlay
         int resolution = pow(10, ceil(log10(100000 / minrange)));
 
         //creating an single-triangle arrangement
@@ -292,6 +291,10 @@ namespace hedra {
            */
           for (int j = 0; j < 3; j++)
           {
+            /*
+             * BUG in some degenerate cases we can have PC1 == PC2
+             * see horse mesh with resolution == 0.1
+             */
             RowVectorXd PC1 = PC.row(FPC(ti, j));
             RowVectorXd PC2 = PC.row(FPC(ti, (j + 1) % 3));
             Halfedge_handle he = CGAL::insert_non_intersecting_curve(triangleArr, Segment2(paramCoord2texCoord(PC1, resolution), paramCoord2texCoord(PC2, resolution)));
@@ -321,7 +324,7 @@ namespace hedra {
             //inserting unbounded lines
             int coordMin = (int) std::floor(facePC.col(i).minCoeff() - 1.0);
             int coordMax = (int) std::ceil(facePC.col(i).maxCoeff() + 1.0);
-            vector<X_monotone_curve_2> lineCurves;
+            vector<Line2> lineCurves;
             for (int coordIndex = coordMin; coordIndex <= coordMax; coordIndex++)
             {
               //The line coord = coordIndex
@@ -329,10 +332,11 @@ namespace hedra {
               RowVectorXd LineCoord2 = RowVectorXd::Ones(facePC.cols());
               LineCoord1(i) = coordIndex;
               LineCoord2(i) = coordIndex;
-              lineCurves.push_back(Line2(paramCoord2texCoord(LineCoord1, resolution), paramCoord2texCoord(LineCoord2, resolution)));
+              lineCurves.emplace_back(paramCoord2texCoord(LineCoord1, resolution), paramCoord2texCoord(LineCoord2, resolution));
             }
             insert(paramArr, lineCurves.begin(), lineCurves.end());
           }
+
           //Constructing the overlay arrangement
           Overlay_traits ot;
           overlay(triangleArr, paramArr, overlayArr, ot);
@@ -342,11 +346,12 @@ namespace hedra {
           int formerNumHalfedges = nextH.rows();
           int formerNumFaces = FH.rows();
 
+          //what do we do here?
           int currFace = 0, currVertex = 0, currHalfedge = 0;
           for (Face_iterator fi = overlayArr.faces_begin(); fi != overlayArr.faces_end(); fi++)
           {
             if (fi->data() == -1)
-              continue;  //one of the outer faces
+              continue;  //one of the outer faces, i.e., unbounded
 
             overlayFace2Triangle.push_back(fi->data());
             fi->data() = formerNumFaces + currFace;
@@ -354,7 +359,8 @@ namespace hedra {
             int DFace = 0;
             Ccb_halfedge_circulator hebegin = fi->outer_ccb();
             Ccb_halfedge_circulator heiterate = hebegin;
-            do {
+            do
+            {
               DFace++;
               if (heiterate->source()->data() < 0)  //new vertex
               {
@@ -372,7 +378,6 @@ namespace hedra {
               }
               heiterate++;
             } while (heiterate != hebegin);
-
           }
 
           currV.conservativeResize(currV.rows() + currVertex, 3);
