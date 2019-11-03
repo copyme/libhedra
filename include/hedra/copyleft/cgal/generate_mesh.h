@@ -410,10 +410,13 @@ namespace hedra {
             ENumber BaryValues[3];
             ENumber Sum = 0;
 
-            // why do we need barycentric coordinates?
             for (int i = 0; i < 3; i++)
             {
               //finding out barycentric coordinates
+              // ti -- current face of the original mesh (the main loop)
+              /* we start from + 1 and + 2 and not 0 and 1 because the weight of vertex v0 is the area/sum of the piece orthogonal to it
+               * see the later loop where we multiply with BaryValues
+               */
               RowVectorXd PC2 = PC.row(FPC(ti, (i + 1) % 3));
               RowVectorXd PC3 = PC.row(FPC(ti, (i + 2) % 3));
               ETriangle2D t(vi->point(), paramCoord2texCoord(PC2, resolution), paramCoord2texCoord(PC3, resolution));
@@ -425,6 +428,7 @@ namespace hedra {
               BaryValues[i] /= Sum;
 
             EPoint3D ENewPosition(0, 0, 0);
+            //find the weighted position of the vertex inside the face, i.e., the 3D position of the vertex lifted to 3D
             for (int i = 0; i < 3; i++)
             {
               EPoint3D vertexCoord(ENumber((int) (V(F(ti, i), 0) * (double) resolution), resolution),
@@ -433,9 +437,9 @@ namespace hedra {
                                   );
               ENewPosition = ENewPosition + (vertexCoord - CGAL::ORIGIN) * BaryValues[i];
             }
-
-            RowVector3d newPosition(CGAL::to_double(ENewPosition.x()), CGAL::to_double(ENewPosition.y()), to_double(ENewPosition.z()));
-            currV.row(vi->data()) = newPosition;
+            currV.row(vi->data()) = Eigen::RowVector3d(CGAL::to_double(ENewPosition.x()),
+                                                       CGAL::to_double(ENewPosition.y()),
+                                                       CGAL::to_double(ENewPosition.z()));
           }
         }
 
