@@ -64,39 +64,44 @@ namespace hedra {
 
       public:
 
-        virtual void create_face(Face_handle_A f1,
-                                 Face_handle_B f2,
-                                 Face_handle_C f) const {
-          // Overlay the data objects associated with f1 and f2 and store the result
-          // with f.
+        virtual void create_face(Face_handle_A f1, Face_handle_B f2, Face_handle_C f) const
+        {
+          // Overlay the data objects associated with f1 and f2 and store the result with f.
           f->set_data(f1->data());
         }
 
-        virtual void create_vertex(Vertex_handle_A v1, Vertex_handle_B v2, Vertex_handle_C v) {
+        virtual void create_vertex(Vertex_handle_A v1, Vertex_handle_B v2, Vertex_handle_C v)
+        {
           v->set_data(PARAM_LINE_VERTEX);
         }
 
-        virtual void create_vertex(Vertex_handle_A v1, Halfedge_handle_B e2, Vertex_handle_C v) {
+        virtual void create_vertex(Vertex_handle_A v1, Halfedge_handle_B e2, Vertex_handle_C v)
+        {
           v->set_data(ORIGINAL_VERTEX);
         }
 
-        virtual void create_vertex(Vertex_handle_A v1, Face_handle_B f2, Vertex_handle_C v) {
+        virtual void create_vertex(Vertex_handle_A v1, Face_handle_B f2, Vertex_handle_C v)
+        {
           v->set_data(ORIGINAL_VERTEX);
         }
 
-        virtual void create_vertex(Halfedge_handle_A e1, Vertex_handle_B v2, Vertex_handle_C v) {
+        virtual void create_vertex(Halfedge_handle_A e1, Vertex_handle_B v2, Vertex_handle_C v)
+        {
           v->set_data(PARAM_LINE_VERTEX);
         }
 
-        virtual void create_vertex(Face_handle_A f1, Vertex_handle_B v2, Vertex_handle_C v) {
+        virtual void create_vertex(Face_handle_A f1, Vertex_handle_B v2, Vertex_handle_C v)
+        {
           v->set_data(PARAM_LINE_VERTEX);
         }
 
-        virtual void create_vertex(Halfedge_handle_A e1, Halfedge_handle_B e2, Vertex_handle_C v) {
+        virtual void create_vertex(Halfedge_handle_A e1, Halfedge_handle_B e2, Vertex_handle_C v)
+        {
           v->set_data(ORIGINAL_VERTEX);
         }
 
-        virtual void create_edge(Halfedge_handle_A e1, Halfedge_handle_B e2, Halfedge_handle_C e) {
+        virtual void create_edge(Halfedge_handle_A e1, Halfedge_handle_B e2, Halfedge_handle_C e)
+        {
           ArrEdgeData aed;
           aed.isParam = true;
           aed.origEdge = e1->data().origEdge;
@@ -105,7 +110,8 @@ namespace hedra {
           e->twin()->set_data(aed);
         }
 
-        virtual void create_edge(Halfedge_handle_A e1, Face_handle_B f2, Halfedge_handle_C e) {
+        virtual void create_edge(Halfedge_handle_A e1, Face_handle_B f2, Halfedge_handle_C e)
+        {
           ArrEdgeData aed;
           aed.isParam = false;
           aed.origEdge = e1->data().origEdge;
@@ -114,7 +120,8 @@ namespace hedra {
           e->twin()->set_data(aed);
         }
 
-        virtual void create_edge(Face_handle_A f1, Halfedge_handle_B e2, Halfedge_handle_C e) {
+        virtual void create_edge(Face_handle_A f1, Halfedge_handle_B e2, Halfedge_handle_C e)
+        {
           ArrEdgeData aed;
           aed.isParam = true;
           aed.origEdge = -1;
@@ -143,7 +150,7 @@ namespace hedra {
       typedef Arr_mesh_generation_overlay_traits<Arr_2, Arr_2, Arr_2> Overlay_traits;
 
 
-      //! TODO: HEX
+      //! TODO: HEX (really needed?)
       //for now doing quad (u,v,-u -v) only!
       Point2 paramCoord2texCoord(Eigen::RowVectorXd paramCoord, int Resolution)
       {
@@ -213,7 +220,7 @@ namespace hedra {
                                     Eigen::MatrixXd &newV,
                                     Eigen::VectorXi &newD,
                                     Eigen::MatrixXi &newF)
-      {
+                                    {
         using namespace Eigen;
         using namespace std;
         VectorXi VH;
@@ -251,16 +258,13 @@ namespace hedra {
            */
           for (int j = 0; j < 3; j++)
           {
-            /*
-             * BUG in some degenerate cases we can have PC1 == PC2
-             * see horse mesh with resolution == 0.1
-             */
             RowVectorXd PC1 = PC.row(FPC(ti, j));
             RowVectorXd PC2 = PC.row(FPC(ti, (j + 1) % 3));
 
             //avoid degenerate cases in non-bijective parametrizations
             if(paramCoord2texCoord(PC1, resolution) == paramCoord2texCoord(PC2, resolution))
               throw std::runtime_error("libhedra::generate_mesh: Only bijective parametrizations are supported, sorry!");
+
             Halfedge_handle he = CGAL::insert_non_intersecting_curve(triangleArr, Segment2(paramCoord2texCoord(PC1, resolution), paramCoord2texCoord(PC2, resolution)));
             ArrEdgeData aed;
             aed.isParam = false;
@@ -390,15 +394,23 @@ namespace hedra {
             } while (heiterate != hebegin);
           }
 
-          //constructing the actual vertices
+          /* constructing the actual vertices
+           * The vertices from the arrangment are 2D and we need to project them on the 3D mesh,
+           * and this is what is going on in this loop.
+           */
           for (Vertex_iterator vi = overlayArr.vertices_begin(); vi != overlayArr.vertices_end(); vi++)
           {
+            /* this are the vertices that are not sources of the parameter lines but their status seems to be -2,
+             * otherwise we would have changed their data() to a current index. So what are they?
+             * Do we have more vertices then we should?
+             */
             if (vi->data() < 0)
               continue;
 
             ENumber BaryValues[3];
             ENumber Sum = 0;
 
+            // why do we need barycentric coordinates?
             for (int i = 0; i < 3; i++)
             {
               //finding out barycentric coordinates
@@ -422,7 +434,7 @@ namespace hedra {
               ENewPosition = ENewPosition + (vertexCoord - CGAL::ORIGIN) * BaryValues[i];
             }
 
-            RowVector3d newPosition(to_double(ENewPosition.x()), to_double(ENewPosition.y()), to_double(ENewPosition.z()));
+            RowVector3d newPosition(CGAL::to_double(ENewPosition.x()), CGAL::to_double(ENewPosition.y()), to_double(ENewPosition.z()));
             currV.row(vi->data()) = newPosition;
           }
         }
@@ -438,7 +450,8 @@ namespace hedra {
           int ebegin = FH(i);
           int ecurr = ebegin;
           newD(i) = 0;
-          do {
+          do
+          {
             newD(i)++;
             ecurr = nextH(ecurr);
           } while (ebegin != ecurr);
@@ -450,7 +463,8 @@ namespace hedra {
           int ebegin = FH(i);
           int ecurr = ebegin;
           int currIndex = 0;
-          do {
+          do
+          {
             newF(i, currIndex++) = HV(ecurr);
             ecurr = nextH(ecurr);
           } while (ebegin != ecurr);
