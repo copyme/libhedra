@@ -286,6 +286,10 @@ namespace hedra {
         for (int ti = 0; ti < F.rows(); ti++)
         {
           Arr_2 paramArr, triangleArr, overlayArr;
+
+          /* for all vertices of each face take UVs
+           * and add edges of the face to the arrangment
+           */
           for (int j = 0; j < 3; j++)
           {
             RowVectorXd PC1 = PC.row(FPC(ti, j));
@@ -298,6 +302,7 @@ namespace hedra {
             he->twin()->set_data(aed);
           }
 
+          // step up meta data for the faces in the arrangment of the mesh
           for (Face_iterator fi = triangleArr.faces_begin(); fi != triangleArr.faces_end(); fi++)
           {
             if (fi->is_unbounded())
@@ -307,7 +312,7 @@ namespace hedra {
           }
 
           //creating an arrangement of parameter lines
-          MatrixXd facePC(3, PC.cols());
+          MatrixXd facePC(3, PC.cols()); // PC.cols == 2
           for (int i = 0; i < 3; i++)
             facePC.row(i) = PC.row(FPC(ti, i));
 
@@ -315,7 +320,7 @@ namespace hedra {
           {
             //inserting unbounded lines
             int coordMin = (int) std::floor(facePC.col(i).minCoeff() - 1.0);
-            int coordMax = (int) std::ceil(facePC.col(i).minCoeff() + 1.0);
+            int coordMax = (int) std::ceil(facePC.col(i).maxCoeff() + 1.0);
             vector<X_monotone_curve_2> lineCurves;
             for (int coordIndex = coordMin; coordIndex <= coordMax; coordIndex++)
             {
@@ -441,7 +446,6 @@ namespace hedra {
 
         //mesh unification
         //stitch_boundaries(currV, VH, HV, HF, FH, nextH, prevH, twinH, isParamVertex, HE2origEdges, isParamHE, overlayFace2Triangle);
-
         //consolidation
         newV = currV;
 
