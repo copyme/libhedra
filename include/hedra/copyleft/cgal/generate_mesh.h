@@ -8,8 +8,10 @@
 #ifndef HEDRA_COPYLEFT_CGAL_EXTRACT_MESH_H
 #define HEDRA_COPYLEFT_CGAL_EXTRACT_MESH_H
 
-#include <igl/igl_inline.h>
+#include <stdexcept>
+#include <vector>
 
+#include <igl/igl_inline.h>
 #include <Eigen/Dense>
 #include <CGAL/basic.h>
 #include <CGAL/Cartesian.h>
@@ -26,7 +28,6 @@
 #include <CGAL/Arr_default_overlay_traits.h>
 #include <hedra/copyleft/cgal/basic_cgal_definitions.h>
 #include <hedra/dcel.h>
-#include <vector>
 
 
 namespace hedra {
