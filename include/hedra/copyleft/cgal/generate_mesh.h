@@ -34,48 +34,6 @@ namespace hedra {
   namespace copyleft {
     namespace cgal {
 
-      struct EdgeData {
-        int ID;
-        bool isHex;
-        int OrigHalfedge;
-        bool isBoundary;
-
-        EdgeData() : ID(-1), isHex(false), OrigHalfedge(-1), isBoundary(false) {}
-
-        ~EdgeData() {};
-      };
-
-      class HexSegment {
-      public:
-        std::pair<int, int> Source;
-        std::pair<int, int> Target;
-
-        HexSegment(int su, int sv, int tu, int tv) {
-          std::pair<int, int> s(su, sv);
-          std::pair<int, int> t(tu, tv);
-          if (s < t) {
-            Source = s;
-            Target = t;
-          } else {
-            Source = t;
-            Target = s;
-          }
-        }
-
-        ~HexSegment() {}
-
-        const bool operator<(const HexSegment &h) const {
-          if (Source < h.Source) return false;
-          if (Source > h.Source) return true;
-
-          if (Target < h.Target) return false;
-          if (Target > h.Target) return true;
-
-          return false; //both are equal
-        }
-
-      };
-
       const int PARAM_LINE_VERTEX = -2;
       const int ORIGINAL_VERTEX = -1;
 
@@ -235,7 +193,7 @@ namespace hedra {
             else if (overlayFace2Tri[HF(origEdges2HE[currEdge][k])] == rightFace)
               rightHE.push_back(origEdges2HE[currEdge][k]);
             else
-              int kaka = 8;  //shouldn't happen
+              throw std::runtime_error("libhedra:stitch_boundaries: This should not happen! Report a bug at: https://github.com/avaxman/libhedra/issues");
 
           }
           //if the parameterization is seamless, left and right halfedges should be perfectly matched, but it's not always the case
@@ -301,7 +259,7 @@ namespace hedra {
 
             //avoid degenerate cases in non-bijective parametrizations
             if(paramCoord2texCoord(PC1, resolution) == paramCoord2texCoord(PC2, resolution))
-              throw std::runtime_error("Directional::generate_mesh: Only bijective parametrizations are supported, sorry!");
+              throw std::runtime_error("libhedra::generate_mesh: Only bijective parametrizations are supported, sorry!");
             Halfedge_handle he = CGAL::insert_non_intersecting_curve(triangleArr, Segment2(paramCoord2texCoord(PC1, resolution), paramCoord2texCoord(PC2, resolution)));
             ArrEdgeData aed;
             aed.isParam = false;
@@ -362,12 +320,10 @@ namespace hedra {
             overlayFace2Triangle.push_back(fi->data());
             fi->data() = formerNumFaces + currFace; // the id of a new face?
             currFace++;
-            int DFace = 0; //???
             Ccb_halfedge_circulator hebegin = fi->outer_ccb();
             Ccb_halfedge_circulator heiterate = hebegin;
             do
             {
-              DFace++;
               if (heiterate->source()->data() < 0)  //new vertex
               {
                 // information if an edge starting from this vertex is the parameter line
@@ -379,8 +335,8 @@ namespace hedra {
               if (heiterate->data().newHalfedge < 0)  //new halfedge
               {
                 HE2origEdges.push_back(heiterate->data().origEdge);
-                isParamHE.push_back(heiterate->data().isParam);
-                heiterate->data().newHalfedge = formerNumHalfedges + currHalfedge;
+                isParamHE.push_back(heiterate->data().isParam); // check if the edge is from the parameter lines
+                heiterate->data().newHalfedge = formerNumHalfedges + currHalfedge; // the id of the new edge???
                 currHalfedge++;
               }
               heiterate++;
