@@ -310,7 +310,10 @@ namespace hedra {
           int formerNumHalfedges = nextH.rows();
           int formerNumFaces = FH.rows();
 
-          //what do we do here?
+          /*
+           * collect information about new faces, vertices and edges and find the number of them which is used later to
+           * resize the containers
+           */
           int currFace = 0, currVertex = 0, currHalfedge = 0;
           for (Face_iterator fi = overlayArr.faces_begin(); fi != overlayArr.faces_end(); fi++)
           {
@@ -320,8 +323,10 @@ namespace hedra {
             overlayFace2Triangle.push_back(fi->data());
             fi->data() = formerNumFaces + currFace; // the id of a new face?
             currFace++;
+
             Ccb_halfedge_circulator hebegin = fi->outer_ccb();
             Ccb_halfedge_circulator heiterate = hebegin;
+            //iterate over edges of the face
             do
             {
               if (heiterate->source()->data() < 0)  //new vertex
@@ -343,6 +348,9 @@ namespace hedra {
             } while (heiterate != hebegin);
           }
 
+          /*
+           * build the initial mesh => original with seperated triangles plus the parametrization lines
+           */
           currV.conservativeResize(currV.rows() + currVertex, 3);
           VH.conservativeResize(VH.size() + currVertex);
           HV.conservativeResize(HV.size() + currHalfedge);
@@ -352,32 +360,38 @@ namespace hedra {
           prevH.conservativeResize(prevH.size() + currHalfedge);
           twinH.conservativeResize(twinH.size() + currHalfedge);
 
+          // we use the CGAL data structure in order to update the libheadra Egien containers which represent the mesh
           for (Face_iterator fi = overlayArr.faces_begin(); fi != overlayArr.faces_end(); fi++)
           {
             if (fi->data() == -1)
-              continue;  //one of the outer faces
+              continue;  //one of the outer faces, i.e., unbounded
 
             Ccb_halfedge_circulator hebegin = fi->outer_ccb();
             Ccb_halfedge_circulator heiterate = hebegin;
             //now assigning nexts and prevs
-            do {
-              nextH(heiterate->data().newHalfedge) = heiterate->next()->data().newHalfedge;
-              prevH(heiterate->data().newHalfedge) = heiterate->prev()->data().newHalfedge;
-              twinH(heiterate->data().newHalfedge) = heiterate->twin()->data().newHalfedge;
-              if (heiterate->twin()->data().newHalfedge != -1)
+            do
+            {
+              // newHalfedge is the id of the halfEdge == formerNumHalfedges + currHalfedge
+              // here we use the CGAL data structure in order to update the libredra data struture, which represent the halfedges
+              nextH(heiterate->data().newHalfedge) = heiterate->next()->data().newHalfedge; // map the edge with its next
+              prevH(heiterate->data().newHalfedge) = heiterate->prev()->data().newHalfedge; // map the edge with its prev
+              twinH(heiterate->data().newHalfedge) = heiterate->twin()->data().newHalfedge; // map the edge with its twin
+
+              if (heiterate->twin()->data().newHalfedge != -1) // no twin => the edge is a boundary edge
                 twinH(heiterate->twin()->data().newHalfedge) = heiterate->data().newHalfedge;
 
-              HV(heiterate->data().newHalfedge) = heiterate->source()->data();
-              VH(heiterate->source()->data()) = heiterate->data().newHalfedge;
-              HF(heiterate->data().newHalfedge) = fi->data();
-              FH(fi->data()) = heiterate->data().newHalfedge;
+              // as above but here we update source vertices of the half-edges
+              HV(heiterate->data().newHalfedge) = heiterate->source()->data(); // map an edge with its source
+              VH(heiterate->source()->data()) = heiterate->data().newHalfedge; // map a vertex with one of its edges
+              HF(heiterate->data().newHalfedge) = fi->data(); // map an edge with the face
+              FH(fi->data()) = heiterate->data().newHalfedge; // map the face with an edge
               heiterate++;
             } while (heiterate != hebegin);
           }
 
           //constructing the actual vertices
-          for (Vertex_iterator vi = overlayArr.vertices_begin(); vi != overlayArr.vertices_end(); vi++) {
-
+          for (Vertex_iterator vi = overlayArr.vertices_begin(); vi != overlayArr.vertices_end(); vi++)
+          {
             if (vi->data() < 0)
               continue;
 
