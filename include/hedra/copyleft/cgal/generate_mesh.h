@@ -222,6 +222,7 @@ namespace hedra {
         VectorXi nextH, prevH, twinH;
 
         double minrange = (PC.colwise().maxCoeff() - PC.colwise().minCoeff()).minCoeff();
+        // find the denominator for the  rational number representation
         int resolution = pow(10, ceil(log10(100000 / minrange)));
 
         //creating an single-triangle arrangement
@@ -414,7 +415,7 @@ namespace hedra {
             EPoint3D ENewPosition(0, 0, 0);
             for (int i = 0; i < 3; i++)
             {
-              EPoint3D vertexCoord(ENumber((int)(V(F(ti, i), 0)*(double) resolution),resolution),
+              EPoint3D vertexCoord(ENumber((int) (V(F(ti, i), 0) * (double) resolution), resolution),
                                    ENumber((int) (V(F(ti, i), 1) * (double) resolution), resolution),
                                    ENumber((int) (V(F(ti, i), 2) * (double) resolution), resolution)
                                   );
