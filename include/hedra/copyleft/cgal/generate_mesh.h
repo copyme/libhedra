@@ -159,42 +159,48 @@ namespace hedra {
         return Point2(u, v);
       }
 
-      IGL_INLINE void stitch_boundaries(const Eigen::VectorXi triEF,
-                                        const Eigen::VectorXi triInnerEdges,
-                                        Eigen::MatrixXd &currV,
-                                        Eigen::VectorXi &VH,
-                                        Eigen::VectorXi &HV,
-                                        Eigen::VectorXi &HF,
-                                        Eigen::VectorXi &FH,
-                                        Eigen::VectorXi &nextH,
-                                        Eigen::VectorXi &prevH,
-                                        Eigen::VectorXi &twinH,
-                                        std::vector<bool> &isParamVertex,
-                                        std::vector<int> &HE2origEdges,
-                                        std::vector<bool> &isParamHE,
-                                        std::vector<int> &overlayFace2Tri,
-                                        const double closeTolerance)
+      IGL_INLINE void stitch_boundaries(const Eigen::MatrixXi & triEF,
+                                        const Eigen::VectorXi & triInnerEdges,
+                                        Eigen::MatrixXd & currV,
+                                        Eigen::VectorXi & VH,
+                                        Eigen::VectorXi & HV,
+                                        Eigen::VectorXi & HF,
+                                        Eigen::VectorXi & FH,
+                                        Eigen::VectorXi & nextH,
+                                        Eigen::VectorXi & prevH,
+                                        Eigen::VectorXi & twinH,
+                                        std::vector<bool> & isParamVertex,
+                                        std::vector<int> & HE2origEdges,
+                                        std::vector<bool> & isParamHE,
+                                        std::vector<int> & overlayFace2Tri,
+                                        const double closeTolerance = 0.0001)
                                         {
         using namespace Eigen;
 
         //TODO: tie all endpoint vertices to original triangles
         VectorXi old2NewV = VectorXi::Constant(currV.rows(), -1);
 
-        std::vector<std::vector<int>> origEdges2HE(triEF.rows());
+        // create a map from the original edges to the half-edges
+        std::vector<std::vector<int> > origEdges2HE(triEF.rows());
         for (int i = 0; i < HE2origEdges.size(); i++)
+        {
+          if(HE2origEdges[i] < 0)
+            continue;
           origEdges2HE[HE2origEdges[i]].push_back(i);
+        }
 
         //for every original inner edge, stitching up boundary (original boundary edges don't have any action item)
-        for (int i = 0; i < triInnerEdges.size(); i++) {
+        for (int i = 0; i < triInnerEdges.size(); i++)
+        {
           //first sorting to left and right edges according to faces
           int currEdge = triInnerEdges(i);
-
           int leftFace = triEF(currEdge, 0);
           int rightFace = triEF(currEdge, 1);
 
           std::vector<int> leftHE, rightHE;
 
-          for (int k = 0; k < origEdges2HE[currEdge].size(); k++) {
+          for (int k = 0; k < origEdges2HE[currEdge].size(); k++)
+          {
             if (overlayFace2Tri[HF(origEdges2HE[currEdge][k])] == leftFace)
               leftHE.push_back(origEdges2HE[currEdge][k]);
             else if (overlayFace2Tri[HF(origEdges2HE[currEdge][k])] == rightFace)
@@ -217,9 +223,9 @@ namespace hedra {
                                     const Eigen::VectorXi &innerEdges,
                                     const Eigen::MatrixXd &PC,
                                     const Eigen::MatrixXi &FPC,
-                                    Eigen::MatrixXd &newV,
-                                    Eigen::VectorXi &newD,
-                                    Eigen::MatrixXi &newF)
+                                    Eigen::MatrixXd & newV,
+                                    Eigen::VectorXi & newD,
+                                    Eigen::MatrixXi & newF)
                                     {
         using namespace Eigen;
         using namespace std;
@@ -344,6 +350,7 @@ namespace hedra {
 
               if (heiterate->data().newHalfedge < 0)  //new halfedge
               {
+                // only edges which co-exist with original edges have values >= 0?????
                 HE2origEdges.push_back(heiterate->data().origEdge);
                 isParamHE.push_back(heiterate->data().isParam); // check if the edge is from the parameter lines
                 heiterate->data().newHalfedge = formerNumHalfedges + currHalfedge; // the id of the new edge???
@@ -444,7 +451,8 @@ namespace hedra {
         }
 
         //mesh unification
-        //stitch_boundaries(currV, VH, HV, HF, FH, nextH, prevH, twinH, isParamVertex, HE2origEdges, isParamHE, overlayFace2Triangle);
+        stitch_boundaries(EF, innerEdges, currV, VH, HV, HF, FH, nextH, prevH, twinH, isParamVertex, HE2origEdges, isParamHE, overlayFace2Triangle);
+
         //consolidation
         newV = currV;
 
