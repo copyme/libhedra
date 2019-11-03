@@ -287,7 +287,7 @@ namespace hedra {
           for (int i = 0; i < 3; i++)
             facePC.row(i) = PC.row(FPC(ti, i));
 
-          // TODO: this part has to be adjusted for the hexes by adding familes of parallel lines
+          // TODO: this part has to be adjusted for the hexes
           for (int i = 0; i < facePC.cols(); i++)
           {
             //inserting unbounded lines
