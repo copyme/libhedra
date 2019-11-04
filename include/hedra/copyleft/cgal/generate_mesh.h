@@ -162,6 +162,27 @@ namespace hedra
         return Point2(u, v);
       }
 
+
+      // Connects disconnected pieces of the mesh
+
+      // Input:
+      // EF               #E by 2, stores the Edge-Face relation of the original triangle mesh
+      // triInnerEdges    #E, stores information about inner edges of the original triagle mesh i.e., no boundary edges
+      // currV            current vertices (old and new vertices together ???)
+      // VH               map from vertices to the half-edges which start at these vertices
+      // HV               map from half-edges to their source vertices
+      // HF               map from half-edges to the corresponding faces
+      // FH               map of each face with one of the half-edges
+      // nextH            next half-edge
+      // prevH            previous half-edge
+      // twinH            twin half-edge (if -1 then an edge is a boundery edge)
+      // isParamVertex    information of a given vertex is from the parametrization
+      // HE2origEdges     map between half-edges and original edges
+      // ParamHE          information if a given half-edge is from the parametrization
+      // overlayFace2Tri  triangle face ID or -1 when a face is unbounded
+      // closeTolerance   value with which the new vertices are stiched
+
+      // Output:
       IGL_INLINE void stitch_boundaries(const Eigen::MatrixXi & triEF,
                                         const Eigen::VectorXi & triInnerEdges,
                                         Eigen::MatrixXd & currV,
@@ -215,7 +236,7 @@ namespace hedra
       }
 
 
-      // Initialize Edges and their topological relations
+      // Generates a new mesh from the parametrization over a given 2D grid (supported: square and hexagonal)
 
       // Input:
 
