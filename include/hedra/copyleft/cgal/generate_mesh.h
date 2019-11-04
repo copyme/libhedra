@@ -29,14 +29,18 @@
 #include <hedra/dcel.h>
 
 
-namespace hedra {
-  namespace copyleft {
-    namespace cgal {
+namespace hedra
+{
+  namespace copyleft
+  {
+    namespace cgal
+    {
 
       const int PARAM_LINE_VERTEX = -2;
       const int ORIGINAL_VERTEX = -1;
 
-      struct ArrEdgeData {
+      struct ArrEdgeData
+          {
         bool isParam;
         int origEdge;
         int newHalfedge;
@@ -210,38 +214,62 @@ namespace hedra {
         }
       }
 
+
+      // Initialize Edges and their topological relations
+
+      // Input:
+
+      // V           #V by 3, mesh vertices
+      // F           #F by 3, vertex indices in face (it works only with triangles!)
+      // EV          #E by 2, stores the edge description as pair of indices to vertices
+      // FE          #F by 3, stores the Face-Edge relation
+      // EF          #E by 2, stores the Edge-Face relation
+      // InnerEdges, indices into EV of which edges are internal (not boundary)
+      // UV           #V by 2, vertex coordinates in the parameter space
+      // FUV          #F by 3, map between faces' vertices and coordinates in the parameter space
+
+      // Output:
+
+      // newV        #newV by 3, new mesh vertices
+      // newD        #newF, number of vertices of each face
+      // newF        #newF by 3, vertex indices in the new faces
       IGL_INLINE void generate_mesh(int N,
-                                    const Eigen::MatrixXd &V,
-                                    const Eigen::MatrixXi &F,
-                                    const Eigen::MatrixXi &EV,
-                                    const Eigen::MatrixXi &FE,
-                                    const Eigen::MatrixXi &EF,
-                                    const Eigen::MatrixXi &EFi,
-                                    const Eigen::VectorXi &innerEdges,
-                                    const Eigen::MatrixXd &PC,
-                                    const Eigen::MatrixXi &FPC,
+                                    const Eigen::MatrixXd & V,
+                                    const Eigen::MatrixXi & F,
+                                    const Eigen::MatrixXi & EV,
+                                    const Eigen::MatrixXi & FE,
+                                    const Eigen::MatrixXi & EF,
+                                    const Eigen::VectorXi & innerEdges,
+                                    const Eigen::MatrixXd & UV,
+                                    const Eigen::MatrixXi & FUV,
                                     Eigen::MatrixXd & newV,
                                     Eigen::VectorXi & newD,
                                     Eigen::MatrixXi & newF)
                                     {
-        Eigen::VectorXi VH;
-        Eigen::MatrixXi EH;
-        Eigen::VectorXi HV, HE, HF, FH;
-        Eigen::VectorXi nextH, prevH, twinH;
-        Eigen::MatrixXd currV;
+        Eigen::VectorXi VH; // map from vertices to the half-edges which start at these vertices
+        Eigen::VectorXi HV; // map from half-edges to their source vertices
+        Eigen::VectorXi HF; // map from half-edges to the corresponding faces
+        Eigen::VectorXi FH; // map of each face with one of the half-edges
+        Eigen::VectorXi nextH; // next half-edge
+        Eigen::VectorXi prevH; // previous half-edge
+        Eigen::VectorXi twinH; // twin half-edge (if -1 then an edge is a boundery edge)
+        Eigen::MatrixXd currV; // current vertices (old and new vertices together ???)
 
-        double minrange = (PC.colwise().maxCoeff() - PC.colwise().minCoeff()).minCoeff();
+        std::vector<bool> isParamVertex; // information of a given vertex is from the parametrization
+        std::vector<int> HE2origEdges; // map between half-edges and original edges
+        std::vector<bool> isParamHE; // information if a given half-edge is from the parametrization
+        std::vector<int> overlayFace2Triangle; // triangle face ID or -1 when a face is unbounded
+
+        double minrange = (UV.colwise().maxCoeff() - UV.colwise().minCoeff()).minCoeff();
         // find the denominator for the  rational number representation
-        int resolution = pow(10, ceil(log10(100000 / minrange)));
+        int resolution = std::pow(10., std::ceil(std::log10(100000. / minrange)));
+
+
+        if(F.cols() != 3)
+          throw std::runtime_error("libhedra::generate_mesh: For now, it works only with triangular faces!");
 
         //creating an single-triangle arrangement
         //Intermediate growing DCEL
-        std::vector<bool> isParamVertex;
-        std::vector<int> DList;
-        std::vector<int> HE2origEdges;
-        std::vector<bool> isParamHE;
-        std::vector<int> overlayFace2Triangle;
-
         for (int ti = 0; ti < F.rows(); ti++)
         {
           Arr_2 paramArr, triangleArr, overlayArr;
@@ -251,14 +279,14 @@ namespace hedra {
            */
           for (int j = 0; j < 3; j++)
           {
-            Eigen::RowVectorXd PC1 = PC.row(FPC(ti, j));
-            Eigen::RowVectorXd PC2 = PC.row(FPC(ti, (j + 1) % 3));
+            Eigen::RowVectorXd UV1 = UV.row(FUV(ti, j));
+            Eigen::RowVectorXd UV2 = UV.row(FUV(ti, (j + 1) % 3));
 
             //avoid degenerate cases in non-bijective parametrizations
-            if(paramCoord2texCoord(PC1, resolution) == paramCoord2texCoord(PC2, resolution))
+            if(paramCoord2texCoord(UV1, resolution) == paramCoord2texCoord(UV2, resolution))
               throw std::runtime_error("libhedra::generate_mesh: Only bijective parametrizations are supported, sorry!");
 
-            Halfedge_handle he = CGAL::insert_non_intersecting_curve(triangleArr, Segment2(paramCoord2texCoord(PC1, resolution), paramCoord2texCoord(PC2, resolution)));
+            Halfedge_handle he = CGAL::insert_non_intersecting_curve(triangleArr, Segment2(paramCoord2texCoord(UV1, resolution), paramCoord2texCoord(UV2, resolution)));
             ArrEdgeData aed;
             aed.isParam = false;
             aed.origEdge = FE(ti, j);
@@ -276,9 +304,9 @@ namespace hedra {
           }
 
           //creating an arrangement of parameter lines
-          Eigen::MatrixXd facePC(3, PC.cols()); // PC.cols == 2
+          Eigen::MatrixXd facePC(3, UV.cols()); // PC.cols == 2
           for (int i = 0; i < 3; i++)
-            facePC.row(i) = PC.row(FPC(ti, i));
+            facePC.row(i) = UV.row(FUV(ti, i));
 
           // TODO: this part has to be adjusted for the hexes
           for (int i = 0; i < facePC.cols(); i++)
@@ -411,9 +439,9 @@ namespace hedra {
               /* we start from + 1 and + 2 and not 0 and 1 because the weight of vertex v0 is the area/sum of the piece orthogonal to it
                * see the later loop where we multiply with BaryValues
                */
-              Eigen::RowVectorXd PC2 = PC.row(FPC(ti, (i + 1) % 3));
-              Eigen::RowVectorXd PC3 = PC.row(FPC(ti, (i + 2) % 3));
-              ETriangle2D t(vi->point(), paramCoord2texCoord(PC2, resolution), paramCoord2texCoord(PC3, resolution));
+              Eigen::RowVectorXd UV2 = UV.row(FUV(ti, (i + 1) % 3));
+              Eigen::RowVectorXd UV3 = UV.row(FUV(ti, (i + 2) % 3));
+              ETriangle2D t(vi->point(), paramCoord2texCoord(UV2, resolution), paramCoord2texCoord(UV3, resolution));
               BaryValues[i] = t.area();
               Sum += BaryValues[i];
             }
