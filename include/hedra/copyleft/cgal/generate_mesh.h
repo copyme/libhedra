@@ -206,7 +206,7 @@ namespace hedra {
             else if (overlayFace2Tri[HF(origEdges2HE[currEdge][k])] == rightFace)
               rightHE.push_back(origEdges2HE[currEdge][k]);
             else
-              throw std::runtime_error("libhedra:stitch_boundaries: This should not happen! Report a bug at: https://github.com/avaxman/libhedra/issues");
+              throw std::runtime_error("libhedra:stitch_boundaries: This should not happened! Report a bug at: https://github.com/avaxman/libhedra/issues");
 
           }
           //if the parameterization is seamless, left and right halfedges should be perfectly matched, but it's not always the case
