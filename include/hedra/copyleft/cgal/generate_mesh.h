@@ -1,5 +1,4 @@
-// This file is part of libhedra, a library for polyhedral mesh processing
-//
+// This file is part of libhedra, a library for polyhedral mesh processing //
 // Copyright (C) 2019 Amir Vaxman <avaxman@gmail.com>
 //
 // This Source Code Form is subject to the terms of the Mozilla Public License
@@ -175,10 +174,8 @@ namespace hedra {
                                         std::vector<int> & overlayFace2Tri,
                                         const double closeTolerance = 0.0001)
                                         {
-        using namespace Eigen;
-
         //TODO: tie all endpoint vertices to original triangles
-        VectorXi old2NewV = VectorXi::Constant(currV.rows(), -1);
+        Eigen::VectorXi old2NewV = Eigen::VectorXi::Constant(currV.rows(), -1);
 
         // create a map from the original edges to the half-edges
         std::vector<std::vector<int> > origEdges2HE(triEF.rows());
@@ -199,7 +196,7 @@ namespace hedra {
 
           std::vector<int> leftHE, rightHE;
 
-          for (int k = 0; k < origEdges2HE[currEdge].size(); k++)
+          for (size_t k = 0; k < origEdges2HE[currEdge].size(); k++)
           {
             if (overlayFace2Tri[HF(origEdges2HE[currEdge][k])] == leftFace)
               leftHE.push_back(origEdges2HE[currEdge][k]);
@@ -227,12 +224,11 @@ namespace hedra {
                                     Eigen::VectorXi & newD,
                                     Eigen::MatrixXi & newF)
                                     {
-        using namespace Eigen;
-        using namespace std;
-        VectorXi VH;
-        MatrixXi EH;
-        VectorXi HV, HE, HF, FH;
-        VectorXi nextH, prevH, twinH;
+        Eigen::VectorXi VH;
+        Eigen::MatrixXi EH;
+        Eigen::VectorXi HV, HE, HF, FH;
+        Eigen::VectorXi nextH, prevH, twinH;
+        Eigen::MatrixXd currV;
 
         double minrange = (PC.colwise().maxCoeff() - PC.colwise().minCoeff()).minCoeff();
         // find the denominator for the  rational number representation
@@ -246,15 +242,6 @@ namespace hedra {
         std::vector<bool> isParamHE;
         std::vector<int> overlayFace2Triangle;
 
-        MatrixXd currV(isParamVertex.size(), 3);
-        VH.resize(currV.rows());
-        HV.resize(HE2origEdges.size());
-        HF.resize(HE2origEdges.size());
-        FH.resize(0);
-        nextH.resize(HE2origEdges.size());
-        prevH.resize(HE2origEdges.size());
-        twinH.resize(HE2origEdges.size());
-
         for (int ti = 0; ti < F.rows(); ti++)
         {
           Arr_2 paramArr, triangleArr, overlayArr;
@@ -264,8 +251,8 @@ namespace hedra {
            */
           for (int j = 0; j < 3; j++)
           {
-            RowVectorXd PC1 = PC.row(FPC(ti, j));
-            RowVectorXd PC2 = PC.row(FPC(ti, (j + 1) % 3));
+            Eigen::RowVectorXd PC1 = PC.row(FPC(ti, j));
+            Eigen::RowVectorXd PC2 = PC.row(FPC(ti, (j + 1) % 3));
 
             //avoid degenerate cases in non-bijective parametrizations
             if(paramCoord2texCoord(PC1, resolution) == paramCoord2texCoord(PC2, resolution))
@@ -289,7 +276,7 @@ namespace hedra {
           }
 
           //creating an arrangement of parameter lines
-          MatrixXd facePC(3, PC.cols()); // PC.cols == 2
+          Eigen::MatrixXd facePC(3, PC.cols()); // PC.cols == 2
           for (int i = 0; i < 3; i++)
             facePC.row(i) = PC.row(FPC(ti, i));
 
@@ -299,12 +286,12 @@ namespace hedra {
             //inserting unbounded lines
             int coordMin = (int) std::floor(facePC.col(i).minCoeff() - 1.0);
             int coordMax = (int) std::ceil(facePC.col(i).maxCoeff() + 1.0);
-            vector<Line2> lineCurves;
+            std::vector<Line2> lineCurves;
             for (int coordIndex = coordMin; coordIndex <= coordMax; coordIndex++)
             {
               //The line coord = coordIndex
-              RowVectorXd LineCoord1 = RowVectorXd::Zero(facePC.cols());
-              RowVectorXd LineCoord2 = RowVectorXd::Ones(facePC.cols());
+              Eigen::RowVectorXd LineCoord1 = Eigen::RowVectorXd::Zero(facePC.cols());
+              Eigen::RowVectorXd LineCoord2 = Eigen::RowVectorXd::Ones(facePC.cols());
               LineCoord1(i) = coordIndex;
               LineCoord2(i) = coordIndex;
               lineCurves.emplace_back(paramCoord2texCoord(LineCoord1, resolution), paramCoord2texCoord(LineCoord2, resolution));
@@ -424,8 +411,8 @@ namespace hedra {
               /* we start from + 1 and + 2 and not 0 and 1 because the weight of vertex v0 is the area/sum of the piece orthogonal to it
                * see the later loop where we multiply with BaryValues
                */
-              RowVectorXd PC2 = PC.row(FPC(ti, (i + 1) % 3));
-              RowVectorXd PC3 = PC.row(FPC(ti, (i + 2) % 3));
+              Eigen::RowVectorXd PC2 = PC.row(FPC(ti, (i + 1) % 3));
+              Eigen::RowVectorXd PC3 = PC.row(FPC(ti, (i + 2) % 3));
               ETriangle2D t(vi->point(), paramCoord2texCoord(PC2, resolution), paramCoord2texCoord(PC3, resolution));
               BaryValues[i] = t.area();
               Sum += BaryValues[i];
