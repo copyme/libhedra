@@ -9,6 +9,7 @@
 
 #include <stdexcept>
 #include <vector>
+#include <set>
 
 #include <igl/igl_inline.h>
 #include <Eigen/Dense>
@@ -197,58 +198,68 @@ namespace hedra
                                         std::vector<int> & HE2origEdges,
                                         std::vector<bool> & isParamHE,
                                         std::vector<int> & overlayFace2Tri,
-                                        const double closeTolerance = 10e-8)
-                                        {
+                                        const double closeTolerance = 10e-8) {
         //TODO: tie all endpoint vertices to original triangles
         Eigen::VectorXi old2NewV = Eigen::VectorXi::Constant(currV.rows(), -1);
 
         // create a map from the original edges to the half-edges
         std::vector<std::vector<int> > origEdges2HE(triEF.rows());
-        for (int i = 0; i < HE2origEdges.size(); i++)
-        {
-          if(HE2origEdges[i] < 0)
+        for (int i = 0; i < HE2origEdges.size(); i++) {
+          if (HE2origEdges[i] < 0)
             continue;
           origEdges2HE[HE2origEdges[i]].push_back(i);
         }
 
-        std::vector<int> removedV, removedHE, removedF; // used to collect the ids of vertices and half-edges which are purly virtual
-        std::map<int, int> updateFWith;
+        std::set<int> removedV, removedHE, removedF; // used to collect the ids of vertices and half-edges which are purly virtual
 
         //for every original inner edge, stitching up boundary (original boundary edges don't have any action item)
-        for (int i = 0; i < triInnerEdges.size(); i++)
-        {
+        for (int i = 0; i < triInnerEdges.size(); i++) {
           //first sorting to left and right edges according to faces
           int currEdge = triInnerEdges(i);
           int leftFace = triEF(currEdge, 0);
           int rightFace = triEF(currEdge, 1);
 
           std::vector<int> leftHE, rightHE;
-          for (size_t k = 0; k < origEdges2HE[currEdge].size(); k++)
-          {
-            if (overlayFace2Tri[HF(origEdges2HE[currEdge][k])] == leftFace)
-            {
+          for (size_t k = 0; k < origEdges2HE[currEdge].size(); k++) {
+            if (overlayFace2Tri[HF(origEdges2HE[currEdge][k])] == leftFace) {
               std::cout << "Left: " << origEdges2HE[currEdge][k] << std::endl;
               leftHE.push_back(origEdges2HE[currEdge][k]);
-            }
-            else if (overlayFace2Tri[HF(origEdges2HE[currEdge][k])] == rightFace)
-            {
+            } else if (overlayFace2Tri[HF(origEdges2HE[currEdge][k])] == rightFace) {
               std::cout << "Right: " << origEdges2HE[currEdge][k] << std::endl;
               rightHE.push_back(origEdges2HE[currEdge][k]);
-            }
-            else
-              throw std::runtime_error("libhedra:stitch_boundaries: This should not happened! Report a bug at: https://github.com/avaxman/libhedra/issues");
+            } else
+              throw std::runtime_error(
+                  "libhedra:stitch_boundaries: This should not happened! Report a bug at: https://github.com/avaxman/libhedra/issues");
           }
           //if the parameterization is seamless, left and right halfedges should be perfectly matched, but it's not always the case
-
-          //find maching source vertices from left to right
-          std::vector<int> leftOrphans(leftHE), rightOrphans(rightHE);
-          for(size_t j = 0; j < leftHE.size(); j++)
+          // first updated edge to face map for faces which are going to be removed
+          for (size_t j = 0; j < leftHE.size(); j++)
           {
             Eigen::RowVector3d vj = currV.row(HV(leftHE[j]));
-            for(size_t k = 0; k < rightHE.size(); k++)
+            for (size_t k = 0; k < rightHE.size(); k++)
             {
-              double e = (vj - currV.row(HV(rightHE[k]))).norm();
-              if(e < closeTolerance)
+              if ((vj - currV.row(HV(nextH(rightHE[k])))).norm() < closeTolerance)
+              {
+                int ebegin = rightHE[k];
+                int ecurr = ebegin;
+                removedF.insert(HF(ecurr));
+                do
+                {
+                  HF(ecurr) = HF(leftHE[j]);
+                  ecurr = nextH(ecurr);
+                } while (ebegin != ecurr);
+              }
+            }
+          }
+
+            //find maching source vertices from left to right
+          std::vector<int> leftOrphans(leftHE), rightOrphans(rightHE);
+          for (size_t j = 0; j < leftHE.size(); j++)
+          {
+            Eigen::RowVector3d vj = currV.row(HV(leftHE[j]));
+            for (size_t k = 0; k < rightHE.size(); k++)
+            {
+              if ((vj - currV.row(HV(rightHE[k]))).norm() < closeTolerance)
               {
                 // remove the pair from the orphanage
                 leftOrphans.erase(std::find(leftOrphans.begin(), leftOrphans.end(), leftHE[j]));
@@ -257,24 +268,8 @@ namespace hedra
                 /* consider a case when both edges from the pair are not parameter lines, i.e.,
                  * the edges have to be removed.
                  */
-                if(! isParamHE[leftHE[j]] && ! isParamHE[rightHE[k]])
+                if (!isParamHE[leftHE[j]] && !isParamHE[rightHE[k]])
                 {
-                  // pre update the circuits -- valid only once all the vertices are stiched
-                  int ebegin = twinH(prevH(rightHE[k]));
-                  int ecurr = ebegin;
-                  do
-                  {
-                    updateFWith.insert({ecurr, HF(leftHE[j])});
-                    ecurr = nextH(ecurr);
-                  } while (ebegin != ecurr);
-
-                  ebegin = twinH(prevH(leftHE[j]));
-                  ecurr = ebegin;
-                  do
-                  {
-                    updateFWith.insert({ecurr, HF(rightHE[k])});
-                    ecurr = nextH(ecurr);
-                  } while (ebegin != ecurr);
                   // stich f0
                   nextH(prevH(leftHE[j])) = nextH(twinH(prevH(rightHE[k])));
                   prevH(nextH(twinH(prevH(rightHE[k])))) = prevH(leftHE[j]);
@@ -285,26 +280,52 @@ namespace hedra
                   twinH(prevH(leftHE[j])) = prevH(rightHE[k]);
                   twinH(prevH(rightHE[k])) = prevH(leftHE[j]);
                   // garbage collector
-                  removedV.push_back(HV(leftHE[j]));
-                  removedV.push_back(HV(rightHE[k]));
-                  removedHE.push_back(leftHE[j]);
-                  removedHE.push_back(rightHE[k]);
-                  removedHE.push_back(prevH(twinH(prevH(leftHE[j]))));
-                  removedHE.push_back(twinH(prevH(leftHE[j])));
-                  removedHE.push_back(twinH(prevH(rightHE[k])));
-                  removedHE.push_back(prevH(twinH(prevH(rightHE[k]))));
-                  removedF.push_back(HF(twinH(prevH(rightHE[k]))));
-                  removedF.push_back(HF(twinH(prevH(leftHE[j]))));
+                  removedV.insert(HV(leftHE[j]));
+                  removedV.insert(HV(rightHE[k]));
+                  removedHE.insert(leftHE[j]);
+                  removedHE.insert(rightHE[k]);
+                  removedHE.insert(prevH(twinH(prevH(leftHE[j]))));
+                  removedHE.insert(twinH(prevH(leftHE[j])));
+                  removedHE.insert(twinH(prevH(rightHE[k])));
+                  removedHE.insert(prevH(twinH(prevH(rightHE[k]))));
+                  removedF.insert(HF(twinH(prevH(rightHE[k]))));
+                  removedF.insert(HF(twinH(prevH(leftHE[j]))));
                 }
                 break;
               }
             }
-
-            //fix the half-edge - face map
-            for(auto it : updateFWith)
-              HF(it.first) = it.second;
           }
-          std::cout << leftOrphans.size() << " " << rightOrphans.size() << std::endl;
+          // orphants
+          for (size_t j = 0; j < leftOrphans.size(); j++)
+          {
+            Eigen::RowVector3d vj = currV.row(HV(leftOrphans[j]));
+            for (size_t k = 0; k < rightHE.size(); k++)
+            {
+              if ((vj - currV.row(HV(nextH(rightHE[k])))).norm() < closeTolerance)
+              {
+                nextH(prevH(leftOrphans[j])) = nextH(rightHE[k]);
+                prevH(nextH(rightHE[k])) = prevH(leftOrphans[j]);
+                removedHE.insert(leftOrphans[j]);
+                removedV.insert(HV(leftOrphans[j]));
+                break;
+              }
+            }
+          }
+          for (size_t j = 0; j < rightOrphans.size(); j++)
+          {
+            Eigen::RowVector3d vj = currV.row(HV(rightOrphans[j]));
+            for (size_t k = 0; k < leftHE.size(); k++)
+            {
+              if ((vj - currV.row(HV(nextH(leftHE[k])))).norm() < closeTolerance)
+              {
+                nextH(prevH(rightOrphans[j])) = nextH(leftHE[k]);
+                prevH(nextH(leftHE[k])) = prevH(rightOrphans[j]);
+                removedHE.insert(rightOrphans[j]);
+                removedV.insert(HV(rightOrphans[j]));
+                break;
+              }
+            }
+          }
         }
       }
 
