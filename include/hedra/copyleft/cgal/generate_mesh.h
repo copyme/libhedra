@@ -197,7 +197,7 @@ namespace hedra
                                         std::vector<int> & HE2origEdges,
                                         std::vector<bool> & isParamHE,
                                         std::vector<int> & overlayFace2Tri,
-                                        const double closeTolerance = 0.0001)
+                                        const double closeTolerance = 10e-8)
                                         {
         //TODO: tie all endpoint vertices to original triangles
         Eigen::VectorXi old2NewV = Eigen::VectorXi::Constant(currV.rows(), -1);
@@ -211,6 +211,9 @@ namespace hedra
           origEdges2HE[HE2origEdges[i]].push_back(i);
         }
 
+        std::vector<int> removedV, removedHE, removedF; // used to collect the ids of vertices and half-edges which are purly virtual
+        std::map<int, int> updateFWith;
+
         //for every original inner edge, stitching up boundary (original boundary edges don't have any action item)
         for (int i = 0; i < triInnerEdges.size(); i++)
         {
@@ -220,18 +223,88 @@ namespace hedra
           int rightFace = triEF(currEdge, 1);
 
           std::vector<int> leftHE, rightHE;
-
           for (size_t k = 0; k < origEdges2HE[currEdge].size(); k++)
           {
             if (overlayFace2Tri[HF(origEdges2HE[currEdge][k])] == leftFace)
+            {
+              std::cout << "Left: " << origEdges2HE[currEdge][k] << std::endl;
               leftHE.push_back(origEdges2HE[currEdge][k]);
+            }
             else if (overlayFace2Tri[HF(origEdges2HE[currEdge][k])] == rightFace)
+            {
+              std::cout << "Right: " << origEdges2HE[currEdge][k] << std::endl;
               rightHE.push_back(origEdges2HE[currEdge][k]);
+            }
             else
               throw std::runtime_error("libhedra:stitch_boundaries: This should not happened! Report a bug at: https://github.com/avaxman/libhedra/issues");
-
           }
           //if the parameterization is seamless, left and right halfedges should be perfectly matched, but it's not always the case
+
+          //find maching source vertices from left to right
+          std::vector<int> leftOrphans(leftHE), rightOrphans(rightHE);
+          for(size_t j = 0; j < leftHE.size(); j++)
+          {
+            Eigen::RowVector3d vj = currV.row(HV(leftHE[j]));
+            for(size_t k = 0; k < rightHE.size(); k++)
+            {
+              double e = (vj - currV.row(HV(rightHE[k]))).norm();
+              if(e < closeTolerance)
+              {
+                // remove the pair from the orphanage
+                leftOrphans.erase(std::find(leftOrphans.begin(), leftOrphans.end(), leftHE[j]));
+                rightOrphans.erase(std::find(rightOrphans.begin(), rightOrphans.end(), rightHE[k]));
+
+                /* consider a case when both edges from the pair are not parameter lines, i.e.,
+                 * the edges have to be removed.
+                 */
+                if(! isParamHE[leftHE[j]] && ! isParamHE[rightHE[k]])
+                {
+                  // pre update the circuits -- valid only once all the vertices are stiched
+                  int ebegin = twinH(prevH(rightHE[k]));
+                  int ecurr = ebegin;
+                  do
+                  {
+                    updateFWith.insert({ecurr, HF(leftHE[j])});
+                    ecurr = nextH(ecurr);
+                  } while (ebegin != ecurr);
+
+                  ebegin = twinH(prevH(leftHE[j]));
+                  ecurr = ebegin;
+                  do
+                  {
+                    updateFWith.insert({ecurr, HF(rightHE[k])});
+                    ecurr = nextH(ecurr);
+                  } while (ebegin != ecurr);
+                  // stich f0
+                  nextH(prevH(leftHE[j])) = nextH(twinH(prevH(rightHE[k])));
+                  prevH(nextH(twinH(prevH(rightHE[k])))) = prevH(leftHE[j]);
+                  // stich f1
+                  nextH(prevH(rightHE[k])) = nextH(twinH(prevH(leftHE[j])));
+                  prevH(nextH(twinH(prevH(leftHE[j])))) = prevH(rightHE[k]);
+                  // stich twins
+                  twinH(prevH(leftHE[j])) = prevH(rightHE[k]);
+                  twinH(prevH(rightHE[k])) = prevH(leftHE[j]);
+                  // garbage collector
+                  removedV.push_back(HV(leftHE[j]));
+                  removedV.push_back(HV(rightHE[k]));
+                  removedHE.push_back(leftHE[j]);
+                  removedHE.push_back(rightHE[k]);
+                  removedHE.push_back(prevH(twinH(prevH(leftHE[j]))));
+                  removedHE.push_back(twinH(prevH(leftHE[j])));
+                  removedHE.push_back(twinH(prevH(rightHE[k])));
+                  removedHE.push_back(prevH(twinH(prevH(rightHE[k]))));
+                  removedF.push_back(HF(twinH(prevH(rightHE[k]))));
+                  removedF.push_back(HF(twinH(prevH(leftHE[j]))));
+                }
+                break;
+              }
+            }
+
+            //fix the half-edge - face map
+            for(auto it : updateFWith)
+              HF(it.first) = it.second;
+          }
+          std::cout << leftOrphans.size() << " " << rightOrphans.size() << std::endl;
         }
       }
 
