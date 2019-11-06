@@ -210,7 +210,6 @@ namespace hedra
           origEdges2HE[HE2origEdges[i]].push_back(i);
         }
 
-        std::set<int> removedV, removedHE, removedF; // used to collect the ids of vertices and half-edges which are purly virtual
 
         //for every original inner edge, stitching up boundary (original boundary edges don't have any action item)
         for (int i = 0; i < triInnerEdges.size(); i++) {
@@ -218,6 +217,8 @@ namespace hedra
           int currEdge = triInnerEdges(i);
           int leftFace = triEF(currEdge, 0);
           int rightFace = triEF(currEdge, 1);
+          // used to collect the ids of vertices and faces which are purly virtual
+          std::set<int> removedV, removedF;
 
           std::vector<int> leftHE, rightHE;
           for (size_t k = 0; k < origEdges2HE[currEdge].size(); k++) {
@@ -231,6 +232,7 @@ namespace hedra
               throw std::runtime_error(
                   "libhedra:stitch_boundaries: This should not happened! Report a bug at: https://github.com/avaxman/libhedra/issues");
           }
+
           //if the parameterization is seamless, left and right halfedges should be perfectly matched, but it's not always the case
           // first updated edge to face map for faces which are going to be removed
           for (size_t j = 0; j < leftHE.size(); j++)
@@ -252,7 +254,7 @@ namespace hedra
             }
           }
 
-            //find maching source vertices from left to right
+          //find maching source vertices from left to right
           std::vector<int> leftOrphans(leftHE), rightOrphans(rightHE);
           for (size_t j = 0; j < leftHE.size(); j++)
           {
@@ -282,14 +284,6 @@ namespace hedra
                   // garbage collector
                   removedV.insert(HV(leftHE[j]));
                   removedV.insert(HV(rightHE[k]));
-                  removedHE.insert(leftHE[j]);
-                  removedHE.insert(rightHE[k]);
-                  removedHE.insert(prevH(twinH(prevH(leftHE[j]))));
-                  removedHE.insert(twinH(prevH(leftHE[j])));
-                  removedHE.insert(twinH(prevH(rightHE[k])));
-                  removedHE.insert(prevH(twinH(prevH(rightHE[k]))));
-                  removedF.insert(HF(twinH(prevH(rightHE[k]))));
-                  removedF.insert(HF(twinH(prevH(leftHE[j]))));
                 }
                 break;
               }
@@ -305,7 +299,6 @@ namespace hedra
               {
                 nextH(prevH(leftOrphans[j])) = nextH(rightHE[k]);
                 prevH(nextH(rightHE[k])) = prevH(leftOrphans[j]);
-                removedHE.insert(leftOrphans[j]);
                 removedV.insert(HV(leftOrphans[j]));
                 break;
               }
@@ -320,10 +313,48 @@ namespace hedra
               {
                 nextH(prevH(rightOrphans[j])) = nextH(leftHE[k]);
                 prevH(nextH(leftHE[k])) = prevH(rightOrphans[j]);
-                removedHE.insert(rightOrphans[j]);
                 removedV.insert(HV(rightOrphans[j]));
                 break;
               }
+            }
+          }
+          /* removed virtual objects
+           *
+           */
+          //faces
+          for(auto fid = removedF.rbegin(); fid != removedF.rend(); fid++)
+          {
+            //remove the row
+            int numRows = FH.rows() - 1;
+            if(*fid < numRows)
+              FH.block(*fid, 0, numRows - *fid, 1) = FH.block(*fid + 1, 0, numRows - *fid, 1);
+            FH.conservativeResize(numRows, 1);
+            //update IDs
+            for(int k = 0; k < HF.rows(); k++)
+            {
+              if(HF(k) > *fid)
+                HF(k)--;
+            }
+          }
+          //vertices
+          for(auto vi = removedV.rbegin(); vi != removedV.rend(); vi++)
+          {
+            //remove the row
+            assert(currV.rows() == VH.rows());
+            int numRows = currV.rows() - 1;
+            if(*vi < numRows)
+            {
+              currV.block(*vi, 0, numRows - *vi, 3) = currV.block(*vi + 1, 0, numRows - *vi, 3);
+              VH.block(*vi, 0, numRows - *vi, 1) = VH.block(*vi + 1, 0, numRows - *vi, 1);
+            }
+            currV.conservativeResize(numRows, 3);
+            VH.conservativeResize(numRows, 1);
+            isParamVertex.erase(isParamVertex.begin() + *vi);
+            //update IDs
+            for(int k = 0; k < HV.rows(); k++)
+            {
+              if(HV(k) > *vi)
+                HV(k)--;
             }
           }
         }
@@ -583,6 +614,7 @@ namespace hedra
         //mesh unification
         stitch_boundaries(EF, innerEdges, currV, VH, HV, HF, FH, nextH, prevH, twinH, isParamVertex, HE2origEdges, isParamHE, overlayFace2Triangle);
 
+        //exit(1);
         //consolidation
         newV = currV;
 
