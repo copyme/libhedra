@@ -306,6 +306,8 @@ namespace hedra
                   //ensure that a face is not refered to a removed edge
                   FH(HF(leftHE[j])) = prevH(leftHE[j]);
                   FH(HF(twinH(prevH(twinH(prevH(leftHE[j])))))) = twinH(prevH(twinH(prevH(leftHE[j]))));
+
+                  removedV.insert(HV(rightHE[k]));
                 }
                 break;
               }
