@@ -198,7 +198,7 @@ namespace hedra
                                         std::vector<int> & HE2origEdges,
                                         std::vector<bool> & isParamHE,
                                         std::vector<int> & overlayFace2Tri,
-                                        const double closeTolerance = 10e-8) {
+                                        const double closeTolerance = 10e-6) {
         //TODO: tie all endpoint vertices to original triangles
         Eigen::VectorXi old2NewV = Eigen::VectorXi::Constant(currV.rows(), -1);
 
@@ -284,7 +284,13 @@ namespace hedra
                   // garbage collector
                   removedV.insert(HV(leftHE[j]));
                   removedV.insert(HV(rightHE[k]));
+
+                  //ensure that a face is not refered to a removed edge
+                  FH(HF(twinH(prevH(leftHE[j])))) = nextH(twinH(prevH(leftHE[j])));
+                  FH(HF(leftHE[j])) = prevH(leftHE[j]);
                 }
+                else
+                  throw std::runtime_error("this should not happened yet!");
                 break;
               }
             }
@@ -318,7 +324,8 @@ namespace hedra
               }
             }
           }
-          /* removed virtual objects
+
+          /* removed only these virtual objects that make issues later on
            *
            */
           //faces
@@ -329,12 +336,6 @@ namespace hedra
             if(*fid < numRows)
               FH.block(*fid, 0, numRows - *fid, 1) = FH.block(*fid + 1, 0, numRows - *fid, 1);
             FH.conservativeResize(numRows, 1);
-            //update IDs
-            for(int k = 0; k < HF.rows(); k++)
-            {
-              if(HF(k) > *fid)
-                HF(k)--;
-            }
           }
           //vertices
           for(auto vi = removedV.rbegin(); vi != removedV.rend(); vi++)
@@ -349,7 +350,6 @@ namespace hedra
             }
             currV.conservativeResize(numRows, 3);
             VH.conservativeResize(numRows, 1);
-            isParamVertex.erase(isParamVertex.begin() + *vi);
             //update IDs
             for(int k = 0; k < HV.rows(); k++)
             {
