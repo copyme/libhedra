@@ -223,10 +223,8 @@ namespace hedra
           std::vector<int> leftHE, rightHE;
           for (size_t k = 0; k < origEdges2HE[currEdge].size(); k++) {
             if (overlayFace2Tri[HF(origEdges2HE[currEdge][k])] == leftFace) {
-              std::cout << "Left: " << origEdges2HE[currEdge][k] << std::endl;
               leftHE.push_back(origEdges2HE[currEdge][k]);
             } else if (overlayFace2Tri[HF(origEdges2HE[currEdge][k])] == rightFace) {
-              std::cout << "Right: " << origEdges2HE[currEdge][k] << std::endl;
               rightHE.push_back(origEdges2HE[currEdge][k]);
             } else
               throw std::runtime_error(
@@ -240,7 +238,7 @@ namespace hedra
             Eigen::RowVector3d vj = currV.row(HV(leftHE[j]));
             for (size_t k = 0; k < rightHE.size(); k++)
             {
-              if ((vj - currV.row(HV(nextH(rightHE[k])))).norm() < closeTolerance)
+              if ((vj - currV.row(HV(nextH(rightHE[k])))).norm() < closeTolerance && ! (isParamHE[leftHE[j]] && isParamHE[rightHE[k]]))
               {
                 int ebegin = rightHE[k];
                 int ecurr = ebegin;
@@ -270,7 +268,7 @@ namespace hedra
                 /* consider a case when both edges from the pair are not parameter lines, i.e.,
                  * the edges have to be removed.
                  */
-                if (!isParamHE[leftHE[j]] && !isParamHE[rightHE[k]])
+                if (!isParamHE[leftHE[j]] && !isParamHE[rightHE[k]] && !isParamVertex[HV(leftHE[j])])
                 {
                   // stich f0
                   nextH(prevH(leftHE[j])) = nextH(twinH(prevH(rightHE[k])));
@@ -289,8 +287,28 @@ namespace hedra
                   FH(HF(twinH(prevH(leftHE[j])))) = nextH(twinH(prevH(leftHE[j])));
                   FH(HF(leftHE[j])) = prevH(leftHE[j]);
                 }
-                else
-                  throw std::runtime_error("this should not happened yet!");
+                //rotated cross case
+                else if (!isParamHE[leftHE[j]] && !isParamHE[rightHE[k]] && isParamVertex[HV(leftHE[j])])
+                {
+                  // conect to the same instance of the vertex
+                  int ecurr = twinH(prevH(rightHE[k]));
+                  std::cout << " twin " << twinH(leftHE[j]) << std::endl;
+                  std::cout << " twin " << twinH(rightHE[k]) << std::endl;
+                  while (ecurr != -1)
+                  {
+                    HV(ecurr) = HV(leftHE[j]);
+                    ecurr = twinH(prevH(ecurr));
+                  }
+                  // stich f0
+                  nextH(prevH(leftHE[j])) = twinH(prevH(twinH(prevH(rightHE[k]))));
+                  prevH(twinH(prevH(twinH(prevH(rightHE[k]))))) = prevH(leftHE[j]);
+                  // stich f1
+                  nextH(prevH(rightHE[k])) = twinH(prevH(twinH(prevH(leftHE[j]))));
+                  prevH(twinH(prevH(twinH(prevH(leftHE[j]))))) = prevH(rightHE[k]);
+                  //ensure that a face is not refered to a removed edge
+                  FH(HF(leftHE[j])) = prevH(leftHE[j]);
+                  FH(HF(twinH(prevH(twinH(prevH(leftHE[j])))))) = twinH(prevH(twinH(prevH(leftHE[j]))));
+                }
                 break;
               }
             }
@@ -301,7 +319,7 @@ namespace hedra
             Eigen::RowVector3d vj = currV.row(HV(leftOrphans[j]));
             for (size_t k = 0; k < rightHE.size(); k++)
             {
-              if ((vj - currV.row(HV(nextH(rightHE[k])))).norm() < closeTolerance)
+              if ((vj - currV.row(HV(nextH(rightHE[k])))).norm() < closeTolerance && (!isParamHE[leftOrphans[j]] && !isParamHE[rightHE[k]]))
               {
                 nextH(prevH(leftOrphans[j])) = nextH(rightHE[k]);
                 prevH(nextH(rightHE[k])) = prevH(leftOrphans[j]);
@@ -315,7 +333,7 @@ namespace hedra
             Eigen::RowVector3d vj = currV.row(HV(rightOrphans[j]));
             for (size_t k = 0; k < leftHE.size(); k++)
             {
-              if ((vj - currV.row(HV(nextH(leftHE[k])))).norm() < closeTolerance)
+              if ((vj - currV.row(HV(nextH(leftHE[k])))).norm() < closeTolerance && (!isParamHE[leftHE[k]] && !isParamHE[rightOrphans[j]]))
               {
                 nextH(prevH(rightOrphans[j])) = nextH(leftHE[k]);
                 prevH(nextH(leftHE[k])) = prevH(rightOrphans[j]);
@@ -614,7 +632,6 @@ namespace hedra
         //mesh unification
         stitch_boundaries(EF, innerEdges, currV, VH, HV, HF, FH, nextH, prevH, twinH, isParamVertex, HE2origEdges, isParamHE, overlayFace2Triangle);
 
-        //exit(1);
         //consolidation
         newV = currV;
 
