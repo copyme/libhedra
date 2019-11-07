@@ -292,8 +292,6 @@ namespace hedra
                 {
                   // conect to the same instance of the vertex
                   int ecurr = twinH(prevH(rightHE[k]));
-                  std::cout << " twin " << twinH(leftHE[j]) << std::endl;
-                  std::cout << " twin " << twinH(rightHE[k]) << std::endl;
                   while (ecurr != -1)
                   {
                     HV(ecurr) = HV(leftHE[j]);
