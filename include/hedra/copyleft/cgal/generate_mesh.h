@@ -261,15 +261,14 @@ namespace hedra
             {
               if ((vj - currV.row(HV(rightHE[k]))).norm() < closeTolerance)
               {
-                // remove the pair from the orphanage
-                leftOrphans.erase(std::find(leftOrphans.begin(), leftOrphans.end(), leftHE[j]));
-                rightOrphans.erase(std::find(rightOrphans.begin(), rightOrphans.end(), rightHE[k]));
-
                 /* consider a case when both edges from the pair are not parameter lines, i.e.,
                  * the edges have to be removed.
                  */
                 if (!isParamHE[leftHE[j]] && !isParamHE[rightHE[k]] && !isParamVertex[HV(leftHE[j])])
                 {
+                  // remove the pair from the orphanage
+                  leftOrphans.erase(std::find(leftOrphans.begin(), leftOrphans.end(), leftHE[j]));
+                  rightOrphans.erase(std::find(rightOrphans.begin(), rightOrphans.end(), rightHE[k]));
                   // stich f0
                   nextH(prevH(leftHE[j])) = nextH(twinH(prevH(rightHE[k])));
                   prevH(nextH(twinH(prevH(rightHE[k])))) = prevH(leftHE[j]);
@@ -290,6 +289,9 @@ namespace hedra
                 //rotated cross case
                 else if (!isParamHE[leftHE[j]] && !isParamHE[rightHE[k]] && isParamVertex[HV(leftHE[j])])
                 {
+                  // remove the pair from the orphanage
+                  leftOrphans.erase(std::find(leftOrphans.begin(), leftOrphans.end(), leftHE[j]));
+                  rightOrphans.erase(std::find(rightOrphans.begin(), rightOrphans.end(), rightHE[k]));
                   // conect to the same instance of the vertex
                   int ecurr = twinH(prevH(rightHE[k]));
                   while (ecurr != -1)
@@ -319,11 +321,29 @@ namespace hedra
             Eigen::RowVector3d vj = currV.row(HV(leftOrphans[j]));
             for (size_t k = 0; k < rightHE.size(); k++)
             {
-              if ((vj - currV.row(HV(nextH(rightHE[k])))).norm() < closeTolerance && (!isParamHE[leftOrphans[j]] && !isParamHE[rightHE[k]]))
+              if ((vj - currV.row(HV(nextH(rightHE[k])))).norm() < closeTolerance)
               {
-                nextH(prevH(leftOrphans[j])) = nextH(rightHE[k]);
-                prevH(nextH(rightHE[k])) = prevH(leftOrphans[j]);
-                removedV.insert(HV(leftOrphans[j]));
+                if ( !isParamHE[leftOrphans[j]])
+                {
+                  nextH(prevH(leftOrphans[j])) = nextH(rightHE[k]);
+                  prevH(nextH(rightHE[k])) = prevH(leftOrphans[j]);
+                  removedV.insert(HV(leftOrphans[j]));
+                }
+                else if (isParamHE[leftOrphans[j]])
+                {
+                  removedV.insert(HV(nextH(rightHE[k])));
+                  HV(nextH(rightHE[k])) = HV(leftOrphans[j]);
+
+                  twinH(leftOrphans[j]) = rightHE[k];
+                  twinH(rightHE[k]) = leftOrphans[j];
+                  if (twinH(nextH(rightHE[k])) != -1)
+                  {
+                    HV(nextH(twinH(nextH(rightHE[k])))) = HV(leftOrphans[j]);
+                    auto it = std::find(rightOrphans.begin(), rightOrphans.end(), nextH(twinH(nextH(rightHE[k]))));
+                    if (it != rightOrphans.end())
+                      rightOrphans.erase(it); // avoid re-docivery for the second set of orphants if this is a middle grid connection
+                  }
+                }
                 break;
               }
             }
@@ -333,11 +353,19 @@ namespace hedra
             Eigen::RowVector3d vj = currV.row(HV(rightOrphans[j]));
             for (size_t k = 0; k < leftHE.size(); k++)
             {
-              if ((vj - currV.row(HV(nextH(leftHE[k])))).norm() < closeTolerance && (!isParamHE[leftHE[k]] && !isParamHE[rightOrphans[j]]))
+              if ((vj - currV.row(HV(nextH(leftHE[k])))).norm() < closeTolerance)
               {
-                nextH(prevH(rightOrphans[j])) = nextH(leftHE[k]);
-                prevH(nextH(leftHE[k])) = prevH(rightOrphans[j]);
-                removedV.insert(HV(rightOrphans[j]));
+                if (!isParamHE[rightOrphans[j]])
+                {
+                  nextH(prevH(rightOrphans[j])) = nextH(leftHE[k]);
+                  prevH(nextH(leftHE[k])) = prevH(rightOrphans[j]);
+                  removedV.insert(HV(rightOrphans[j]));
+                }
+                else if (isParamHE[rightOrphans[j]])
+                {
+                  removedV.insert(HV(rightOrphans[j]));
+                  HV(rightOrphans[j]) = HV(nextH(leftHE[k]));
+                }
                 break;
               }
             }
