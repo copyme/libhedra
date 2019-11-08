@@ -365,6 +365,8 @@ namespace hedra
                 {
                   removedV.insert(HV(rightOrphans[j]));
                   HV(rightOrphans[j]) = HV(nextH(leftHE[k]));
+                  twinH(leftHE[k]) = rightOrphans[j];
+                  twinH(rightOrphans[j]) = leftHE[k];
                 }
                 break;
               }
