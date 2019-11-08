@@ -341,7 +341,7 @@ namespace hedra
                     HV(nextH(twinH(nextH(rightHE[k])))) = HV(leftOrphans[j]);
                     auto it = std::find(rightOrphans.begin(), rightOrphans.end(), nextH(twinH(nextH(rightHE[k]))));
                     if (it != rightOrphans.end())
-                      rightOrphans.erase(it); // avoid re-docivery for the second set of orphants if this is a middle grid connection
+                      rightOrphans.erase(it); // avoid re-discovering for the second set of orphants if this is a middle grid connection
                   }
                 }
                 break;
