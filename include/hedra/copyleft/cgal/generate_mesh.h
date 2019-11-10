@@ -337,8 +337,6 @@ namespace hedra
                   prevH(nextH(rightHE[k])) = prevH(leftOrphans[j]);
                   //garbage collector
                   removedV.insert(HV(leftOrphans[j]));
-                  removedHE.insert(leftOrphans[j]);
-                  removedHE.insert(rightHE[k]);
 
                   //ensure that a face is not refered to a removed edge
                   FH(HF(leftOrphans[j])) = prevH(leftOrphans[j]);
@@ -351,6 +349,7 @@ namespace hedra
 
                   twinH(leftOrphans[j]) = rightHE[k];
                   twinH(rightHE[k]) = leftOrphans[j];
+
                   if (twinH(nextH(rightHE[k])) != -1)
                   {
                     HV(nextH(twinH(nextH(rightHE[k])))) = HV(leftOrphans[j]);
@@ -359,6 +358,8 @@ namespace hedra
                       rightOrphans.erase(it); // avoid re-discovering for the second set of orphants if this is a middle grid connection
                   }
                 }
+                removedHE.insert(leftOrphans[j]);
+                removedHE.insert(rightHE[k]);
                 break;
               }
             }
