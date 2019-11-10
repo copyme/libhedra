@@ -198,7 +198,7 @@ namespace hedra
                                         std::vector<int> & HE2origEdges,
                                         std::vector<bool> & isParamHE,
                                         std::vector<int> & overlayFace2Tri,
-                                        const double closeTolerance = 10e-6) {
+                                        const double closeTolerance = 10e-8) {
         //TODO: tie all endpoint vertices to original triangles
         Eigen::VectorXi old2NewV = Eigen::VectorXi::Constant(currV.rows(), -1);
 
@@ -210,7 +210,6 @@ namespace hedra
           origEdges2HE[HE2origEdges[i]].push_back(i);
         }
 
-
         //for every original inner edge, stitching up boundary (original boundary edges don't have any action item)
         for (int i = 0; i < triInnerEdges.size(); i++) {
           //first sorting to left and right edges according to faces
@@ -218,7 +217,7 @@ namespace hedra
           int leftFace = triEF(currEdge, 0);
           int rightFace = triEF(currEdge, 1);
           // used to collect the ids of vertices and faces which are purly virtual
-          std::set<int> removedV, removedF;
+          std::set<int> removedV, removedF, removedHE;
 
           std::vector<int> leftHE, rightHE;
           for (size_t k = 0; k < origEdges2HE[currEdge].size(); k++) {
@@ -275,12 +274,18 @@ namespace hedra
                   // stich f1
                   nextH(prevH(rightHE[k])) = nextH(twinH(prevH(leftHE[j])));
                   prevH(nextH(twinH(prevH(leftHE[j])))) = prevH(rightHE[k]);
+
+                  // garbage collector
+                  removedHE.insert(twinH(prevH(leftHE[j])));
+                  removedHE.insert(twinH(prevH(rightHE[k])));
                   // stich twins
                   twinH(prevH(leftHE[j])) = prevH(rightHE[k]);
                   twinH(prevH(rightHE[k])) = prevH(leftHE[j]);
                   // garbage collector
                   removedV.insert(HV(leftHE[j]));
                   removedV.insert(HV(rightHE[k]));
+                  removedHE.insert(leftHE[j]);
+                  removedHE.insert(rightHE[k]);
 
                   //ensure that a face is not refered to a removed edge
                   FH(HF(twinH(prevH(leftHE[j])))) = nextH(twinH(prevH(leftHE[j])));
@@ -309,7 +314,10 @@ namespace hedra
                   FH(HF(leftHE[j])) = prevH(leftHE[j]);
                   FH(HF(twinH(prevH(twinH(prevH(leftHE[j])))))) = twinH(prevH(twinH(prevH(leftHE[j]))));
 
+                  //garnage collector
                   removedV.insert(HV(rightHE[k]));
+                  removedHE.insert(leftHE[j]);
+                  removedHE.insert(rightHE[k]);
                 }
                 break;
               }
@@ -323,11 +331,18 @@ namespace hedra
             {
               if ((vj - currV.row(HV(nextH(rightHE[k])))).norm() < closeTolerance)
               {
-                if ( !isParamHE[leftOrphans[j]])
+                if (!isParamHE[leftOrphans[j]])
                 {
-                  nextH(prevH(leftOrphans[j])) = nextH(rightHE[k]);
+                  nextH(prevH(leftOrphans[j])) = nextH(rightHE[k]); //
                   prevH(nextH(rightHE[k])) = prevH(leftOrphans[j]);
+                  //garbage collector
                   removedV.insert(HV(leftOrphans[j]));
+                  removedHE.insert(leftOrphans[j]);
+                  removedHE.insert(rightHE[k]);
+
+                  //ensure that a face is not refered to a removed edge
+                  FH(HF(leftOrphans[j])) = prevH(leftOrphans[j]);
+                  FH(HF(rightHE[k])) = nextH(rightHE[k]);
                 }
                 else if (isParamHE[leftOrphans[j]])
                 {
@@ -360,6 +375,12 @@ namespace hedra
                   nextH(prevH(rightOrphans[j])) = nextH(leftHE[k]);
                   prevH(nextH(leftHE[k])) = prevH(rightOrphans[j]);
                   removedV.insert(HV(rightOrphans[j]));
+                  removedHE.insert(rightOrphans[j]);
+                  removedHE.insert(leftHE[k]);
+
+                  //ensure that a face is not refered to a removed edge
+                  FH(HF(rightOrphans[j])) = prevH(rightOrphans[j]);
+                  FH(HF(leftHE[k])) = nextH(leftHE[k]);
                 }
                 else if (isParamHE[rightOrphans[j]])
                 {
@@ -373,23 +394,25 @@ namespace hedra
             }
           }
 
-          /* removed only these virtual objects that make issues later on
+          /* removed virtual objects
            *
            */
           //faces
           for(auto fid = removedF.rbegin(); fid != removedF.rend(); fid++)
           {
             //remove the row
+            assert(FH.rows() == overlayFace2Tri.size());
             int numRows = FH.rows() - 1;
             if(*fid < numRows)
               FH.block(*fid, 0, numRows - *fid, 1) = FH.block(*fid + 1, 0, numRows - *fid, 1);
             FH.conservativeResize(numRows, 1);
+            overlayFace2Tri.erase(overlayFace2Tri.begin() + *fid);
           }
           //vertices
           for(auto vi = removedV.rbegin(); vi != removedV.rend(); vi++)
           {
             //remove the row
-            assert(currV.rows() == VH.rows());
+            assert(currV.rows() == VH.rows() && currV.rows() == isParamVertex.size());
             int numRows = currV.rows() - 1;
             if(*vi < numRows)
             {
@@ -398,11 +421,61 @@ namespace hedra
             }
             currV.conservativeResize(numRows, 3);
             VH.conservativeResize(numRows, 1);
+            isParamVertex.erase(isParamVertex.begin() + *vi);
             //update IDs
             for(int k = 0; k < HV.rows(); k++)
             {
               if(HV(k) > *vi)
                 HV(k)--;
+            }
+          }
+          //edges
+          for (auto he = removedHE.rbegin(); he != removedHE.rend(); he++)
+          {
+            assert(HF.rows() == (int)((HV.rows() + nextH.rows() + prevH.rows() + twinH.rows() + HE2origEdges.size() + isParamHE.size())/ 6.));
+            int numRows = nextH.rows() - 1;
+
+            if(*he < numRows) {
+              HF.block(*he, 0, numRows - *he, 1) = HF.block(*he + 1, 0, numRows - *he, 1);
+              HV.block(*he, 0, numRows - *he, 1) = HV.block(*he + 1, 0, numRows - *he, 1);
+              nextH.block(*he, 0, numRows - *he, 1) = nextH.block(*he + 1, 0, numRows - *he, 1);
+              prevH.block(*he, 0, numRows - *he, 1) = prevH.block(*he + 1, 0, numRows - *he, 1);
+              twinH.block(*he, 0, numRows - *he, 1) = twinH.block(*he + 1, 0, numRows - *he, 1);
+            }
+            HF.conservativeResize(numRows, 1);
+            HV.conservativeResize(numRows, 1);
+            nextH.conservativeResize(numRows, 1);
+            prevH.conservativeResize(numRows, 1);
+            twinH.conservativeResize(numRows, 1);
+            HE2origEdges.erase(HE2origEdges.begin() + *he);
+            isParamHE.erase(isParamHE.begin() + *he);
+
+            //update IDs
+            for(int k = 0; k < FH.rows(); k++)
+              if(FH(k) > *he)
+                FH(k)--;
+
+            for(int k = 0; k < VH.rows(); k++)
+              if(VH(k) > *he)
+                VH(k)--;
+
+            for(int k = 0; k < nextH.rows(); k++)
+              if(nextH(k) > *he)
+                nextH(k)--;
+
+            for(int k = 0; k < prevH.rows(); k++)
+              if(prevH(k) > *he)
+                prevH(k)--;
+
+            for(int k = 0; k < twinH.rows(); k++)
+              if(twinH(k) > *he)
+                twinH(k)--;
+
+            for (int k = 0; k < origEdges2HE.size(); k++)
+            {
+              auto it = std::find(origEdges2HE[k].begin(), origEdges2HE[k].end(), *he);
+              if (it != origEdges2HE[k].end())
+                origEdges2HE[k].erase(it);
             }
           }
         }
