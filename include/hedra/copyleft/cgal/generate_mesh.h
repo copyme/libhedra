@@ -408,6 +408,11 @@ namespace hedra
               FH.block(*fid, 0, numRows - *fid, 1) = FH.block(*fid + 1, 0, numRows - *fid, 1);
             FH.conservativeResize(numRows, 1);
             overlayFace2Tri.erase(overlayFace2Tri.begin() + *fid);
+
+            //update IDs
+            for(int k = 0; k < HF.rows(); k++)
+              if(HF(k) > *fid)
+                HF(k)--;
           }
           //vertices
           for(auto vi = removedV.rbegin(); vi != removedV.rend(); vi++)
@@ -472,11 +477,14 @@ namespace hedra
               if(twinH(k) > *he)
                 twinH(k)--;
 
-            for (int k = 0; k < origEdges2HE.size(); k++)
+            for (size_t k = 0; k < origEdges2HE.size(); k++)
             {
               auto it = std::find(origEdges2HE[k].begin(), origEdges2HE[k].end(), *he);
               if (it != origEdges2HE[k].end())
                 origEdges2HE[k].erase(it);
+              for(size_t h = 0; h < origEdges2HE[k].size(); h++)
+                if (origEdges2HE[k][h] > *he)
+                  origEdges2HE[k][h]--;
             }
           }
         }
