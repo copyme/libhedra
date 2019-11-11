@@ -199,9 +199,6 @@ namespace hedra
                                         std::vector<bool> & isParamHE,
                                         std::vector<int> & overlayFace2Tri,
                                         const double closeTolerance = 10e-8) {
-        //TODO: tie all endpoint vertices to original triangles
-        Eigen::VectorXi old2NewV = Eigen::VectorXi::Constant(currV.rows(), -1);
-
         // create a map from the original edges to the half-edges
         std::vector<std::vector<int> > origEdges2HE(triEF.rows());
         for (int i = 0; i < HE2origEdges.size(); i++) {
@@ -210,25 +207,33 @@ namespace hedra
           origEdges2HE[HE2origEdges[i]].push_back(i);
         }
 
+        Eigen::VectorXi oldHF = HF;
+
         //for every original inner edge, stitching up boundary (original boundary edges don't have any action item)
         for (int i = 0; i < triInnerEdges.size(); i++) {
           //first sorting to left and right edges according to faces
           int currEdge = triInnerEdges(i);
           int leftFace = triEF(currEdge, 0);
           int rightFace = triEF(currEdge, 1);
+
           // used to collect the ids of vertices and faces which are purly virtual
           std::set<int> removedV, removedF, removedHE;
 
           std::vector<int> leftHE, rightHE;
           for (size_t k = 0; k < origEdges2HE[currEdge].size(); k++) {
-            if (overlayFace2Tri[HF(origEdges2HE[currEdge][k])] == leftFace) {
+            std::cout << "i " << i << " f " << overlayFace2Tri[oldHF(origEdges2HE[currEdge][k])] << " left " << leftFace << " right " << rightFace << std::endl;
+            if (overlayFace2Tri[oldHF(origEdges2HE[currEdge][k])] == leftFace) {
               leftHE.push_back(origEdges2HE[currEdge][k]);
-            } else if (overlayFace2Tri[HF(origEdges2HE[currEdge][k])] == rightFace) {
+            } else if (overlayFace2Tri[oldHF(origEdges2HE[currEdge][k])] == rightFace) {
               rightHE.push_back(origEdges2HE[currEdge][k]);
-            } else
+            }
+            else
               throw std::runtime_error(
                   "libhedra:stitch_boundaries: This should not happened! Report a bug at: https://github.com/avaxman/libhedra/issues");
           }
+
+          if (i == triInnerEdges.rows() - 1)
+            std::cout << "last one" << std::endl;
 
           //if the parameterization is seamless, left and right halfedges should be perfectly matched, but it's not always the case
           // first updated edge to face map for faces which are going to be removed
@@ -239,14 +244,17 @@ namespace hedra
             {
               if ((vj - currV.row(HV(nextH(rightHE[k])))).norm() < closeTolerance && ! (isParamHE[leftHE[j]] && isParamHE[rightHE[k]]))
               {
-                int ebegin = rightHE[k];
-                int ecurr = ebegin;
-                removedF.insert(HF(ecurr));
-                do
+                // if a face is split up between multiple tirangles i.e. more than 2 then we can rediscover the same pieces.
+                if(HF(rightHE[j]) != HF(leftHE[j]))
                 {
-                  HF(ecurr) = HF(leftHE[j]);
-                  ecurr = nextH(ecurr);
-                } while (ebegin != ecurr);
+                  int ebegin = rightHE[k];
+                  int ecurr = ebegin;
+                  removedF.insert(HF(ecurr));
+                  do {
+                    HF(ecurr) = HF(leftHE[j]);
+                    ecurr = nextH(ecurr);
+                  } while (ebegin != ecurr);
+                }
               }
             }
           }
@@ -311,6 +319,7 @@ namespace hedra
                   nextH(prevH(rightHE[k])) = twinH(prevH(twinH(prevH(leftHE[j]))));
                   prevH(twinH(prevH(twinH(prevH(leftHE[j]))))) = prevH(rightHE[k]);
                   //ensure that a face is not refered to a removed edge
+
                   FH(HF(leftHE[j])) = prevH(leftHE[j]);
                   FH(HF(twinH(prevH(twinH(prevH(leftHE[j])))))) = twinH(prevH(twinH(prevH(leftHE[j]))));
 
@@ -337,6 +346,8 @@ namespace hedra
                   prevH(nextH(rightHE[k])) = prevH(leftOrphans[j]);
                   //garbage collector
                   removedV.insert(HV(leftOrphans[j]));
+                  removedHE.insert(leftOrphans[j]);
+                  removedHE.insert(rightHE[k]);
 
                   //ensure that a face is not refered to a removed edge
                   FH(HF(leftOrphans[j])) = prevH(leftOrphans[j]);
@@ -358,8 +369,6 @@ namespace hedra
                       rightOrphans.erase(it); // avoid re-discovering for the second set of orphants if this is a middle grid connection
                   }
                 }
-                removedHE.insert(leftOrphans[j]);
-                removedHE.insert(rightHE[k]);
                 break;
               }
             }
@@ -402,12 +411,10 @@ namespace hedra
           for(auto fid = removedF.rbegin(); fid != removedF.rend(); fid++)
           {
             //remove the row
-            assert(FH.rows() == overlayFace2Tri.size());
             int numRows = FH.rows() - 1;
             if(*fid < numRows)
               FH.block(*fid, 0, numRows - *fid, 1) = FH.block(*fid + 1, 0, numRows - *fid, 1);
             FH.conservativeResize(numRows, 1);
-            overlayFace2Tri.erase(overlayFace2Tri.begin() + *fid);
 
             //update IDs
             for(int k = 0; k < HF.rows(); k++)
@@ -443,12 +450,14 @@ namespace hedra
 
             if(*he < numRows) {
               HF.block(*he, 0, numRows - *he, 1) = HF.block(*he + 1, 0, numRows - *he, 1);
+              oldHF.block(*he, 0, numRows - *he, 1) = oldHF.block(*he + 1, 0, numRows - *he, 1);
               HV.block(*he, 0, numRows - *he, 1) = HV.block(*he + 1, 0, numRows - *he, 1);
               nextH.block(*he, 0, numRows - *he, 1) = nextH.block(*he + 1, 0, numRows - *he, 1);
               prevH.block(*he, 0, numRows - *he, 1) = prevH.block(*he + 1, 0, numRows - *he, 1);
               twinH.block(*he, 0, numRows - *he, 1) = twinH.block(*he + 1, 0, numRows - *he, 1);
             }
             HF.conservativeResize(numRows, 1);
+            oldHF.conservativeResize(numRows, 1);
             HV.conservativeResize(numRows, 1);
             nextH.conservativeResize(numRows, 1);
             prevH.conservativeResize(numRows, 1);
