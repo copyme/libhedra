@@ -221,19 +221,14 @@ namespace hedra
 
           std::vector<int> leftHE, rightHE;
           for (size_t k = 0; k < origEdges2HE[currEdge].size(); k++) {
-            std::cout << "i " << i << " f " << overlayFace2Tri[oldHF(origEdges2HE[currEdge][k])] << " left " << leftFace << " right " << rightFace << std::endl;
             if (overlayFace2Tri[oldHF(origEdges2HE[currEdge][k])] == leftFace) {
               leftHE.push_back(origEdges2HE[currEdge][k]);
             } else if (overlayFace2Tri[oldHF(origEdges2HE[currEdge][k])] == rightFace) {
               rightHE.push_back(origEdges2HE[currEdge][k]);
             }
             else
-              throw std::runtime_error(
-                  "libhedra:stitch_boundaries: This should not happened! Report a bug at: https://github.com/avaxman/libhedra/issues");
+              throw std::runtime_error("libhedra:stitch_boundaries: This should not happened! Report a bug at: https://github.com/avaxman/libhedra/issues");
           }
-
-          if (i == triInnerEdges.rows() - 1)
-            std::cout << "last one" << std::endl;
 
           //if the parameterization is seamless, left and right halfedges should be perfectly matched, but it's not always the case
           // first updated edge to face map for faces which are going to be removed
@@ -244,17 +239,16 @@ namespace hedra
             {
               if ((vj - currV.row(HV(nextH(rightHE[k])))).norm() < closeTolerance && ! (isParamHE[leftHE[j]] && isParamHE[rightHE[k]]))
               {
+                int ebegin = rightHE[k];
+                int ecurr = ebegin;
+
                 // if a face is split up between multiple tirangles i.e. more than 2 then we can rediscover the same pieces.
-                if(HF(rightHE[j]) != HF(leftHE[j]))
-                {
-                  int ebegin = rightHE[k];
-                  int ecurr = ebegin;
+                if(HF(ecurr) != HF(leftHE[j]))
                   removedF.insert(HF(ecurr));
                   do {
                     HF(ecurr) = HF(leftHE[j]);
                     ecurr = nextH(ecurr);
                   } while (ebegin != ecurr);
-                }
               }
             }
           }
@@ -286,6 +280,7 @@ namespace hedra
                   // garbage collector
                   removedHE.insert(twinH(prevH(leftHE[j])));
                   removedHE.insert(twinH(prevH(rightHE[k])));
+
                   // stich twins
                   twinH(prevH(leftHE[j])) = prevH(rightHE[k]);
                   twinH(prevH(rightHE[k])) = prevH(leftHE[j]);
@@ -350,8 +345,8 @@ namespace hedra
                   removedHE.insert(rightHE[k]);
 
                   //ensure that a face is not refered to a removed edge
-                  FH(HF(leftOrphans[j])) = prevH(leftOrphans[j]);
-                  FH(HF(rightHE[k])) = nextH(rightHE[k]);
+                  FH(HF(leftOrphans[j])) = nextH(leftOrphans[j]);
+                  FH(HF(rightHE[k])) = prevH(rightHE[k]);
                 }
                 else if (isParamHE[leftOrphans[j]])
                 {
