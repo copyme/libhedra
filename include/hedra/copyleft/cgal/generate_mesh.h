@@ -323,8 +323,8 @@ namespace hedra
                   removedHE.insert(leftHE[j]);
                   removedHE.insert(rightHE[k]);
                 }
-                else
-                  throw std::runtime_error("libhedra:stitch_boundaries: This should not happened! Report a bug at: https://github.com/avaxman/libhedra/issues");
+//                else
+//                  throw std::runtime_error("libhedra:stitch_boundaries: This should not happened! Report a bug at: https://github.com/avaxman/libhedra/issues");
                 break;
               }
             }
@@ -337,7 +337,7 @@ namespace hedra
             {
               if ((vj - currV.row(HV(nextH(rightHE[k])))).norm() < closeTolerance)
               {
-                if (!isParamHE[leftOrphans[j]])
+                if (!isParamHE[leftOrphans[j]] && !isParamVertex[HV(leftOrphans[j])])
                 {
                   nextH(prevH(leftOrphans[j])) = nextH(rightHE[k]); //
                   prevH(nextH(rightHE[k])) = prevH(leftOrphans[j]);
@@ -366,6 +366,24 @@ namespace hedra
                       rightOrphans.erase(it); // avoid re-discovering for the second set of orphants if this is a middle grid connection
                   }
                 }
+                else if (!isParamHE[leftOrphans[j]] && isParamVertex[HV(leftOrphans[j])])
+                {
+                  nextH(prevH(leftOrphans[j])) = nextH(rightHE[k]); //
+                  prevH(nextH(rightHE[k])) = prevH(leftOrphans[j]);
+                  //garbage collector
+                  removedHE.insert(leftOrphans[j]);
+                  removedHE.insert(rightHE[k]);
+
+                  if(HV(leftOrphans[j]) != HV(nextH(rightHE[k])))
+                    removedV.insert(HV(leftOrphans[j]));
+
+                  //merge the cases
+                  HV(twinH(prevH(leftOrphans[j]))) = HV(nextH(rightHE[k]));
+
+                  //ensure that a face is not refered to a removed edge
+                  FH(HF(leftOrphans[j])) = nextH(leftOrphans[j]);
+                  FH(HF(rightHE[k])) = prevH(rightHE[k]);
+                }
                 else
                   throw std::runtime_error("libhedra:stitch_boundaries: This should not happened! Report a bug at: https://github.com/avaxman/libhedra/issues");
                 break;
@@ -379,7 +397,7 @@ namespace hedra
             {
               if ((vj - currV.row(HV(nextH(leftHE[k])))).norm() < closeTolerance)
               {
-                if (!isParamHE[rightOrphans[j]])
+                if (!isParamHE[rightOrphans[j]] && !isParamVertex[HV(rightOrphans[j])])
                 {
                   nextH(prevH(rightOrphans[j])) = nextH(leftHE[k]);
                   prevH(nextH(leftHE[k])) = prevH(rightOrphans[j]);
@@ -397,6 +415,24 @@ namespace hedra
                   HV(rightOrphans[j]) = HV(nextH(leftHE[k]));
                   twinH(leftHE[k]) = rightOrphans[j];
                   twinH(rightOrphans[j]) = leftHE[k];
+                }
+                else if (!isParamHE[rightOrphans[j]] && isParamVertex[HV(rightOrphans[j])])
+                {
+                  nextH(prevH(rightOrphans[j])) = nextH(leftHE[k]);
+                  prevH(nextH(leftHE[k])) = prevH(rightOrphans[j]);
+
+                  if(HV(rightOrphans[j]) != HV(nextH(leftHE[k])))
+                    removedV.insert(HV(rightOrphans[j]));
+
+                  //merge the cases
+                  HV(twinH(prevH(rightOrphans[j]))) = HV(nextH(leftHE[k]));
+
+                  removedHE.insert(rightOrphans[j]);
+                  removedHE.insert(leftHE[k]);
+
+                  //ensure that a face is not refered to a removed edge
+                  FH(HF(rightOrphans[j])) = prevH(rightOrphans[j]);
+                  FH(HF(leftHE[k])) = nextH(leftHE[k]);
                 }
                 else
                   throw std::runtime_error("libhedra:stitch_boundaries: This should not happened! Report a bug at: https://github.com/avaxman/libhedra/issues");
