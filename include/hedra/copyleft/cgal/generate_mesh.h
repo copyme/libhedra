@@ -323,6 +323,8 @@ namespace hedra
                   removedHE.insert(leftHE[j]);
                   removedHE.insert(rightHE[k]);
                 }
+                else
+                  throw std::runtime_error("libhedra:stitch_boundaries: This should not happened! Report a bug at: https://github.com/avaxman/libhedra/issues");
                 break;
               }
             }
@@ -364,6 +366,8 @@ namespace hedra
                       rightOrphans.erase(it); // avoid re-discovering for the second set of orphants if this is a middle grid connection
                   }
                 }
+                else
+                  throw std::runtime_error("libhedra:stitch_boundaries: This should not happened! Report a bug at: https://github.com/avaxman/libhedra/issues");
                 break;
               }
             }
@@ -394,6 +398,8 @@ namespace hedra
                   twinH(leftHE[k]) = rightOrphans[j];
                   twinH(rightOrphans[j]) = leftHE[k];
                 }
+                else
+                  throw std::runtime_error("libhedra:stitch_boundaries: This should not happened! Report a bug at: https://github.com/avaxman/libhedra/issues");
                 break;
               }
             }
