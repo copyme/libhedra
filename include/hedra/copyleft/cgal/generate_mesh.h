@@ -323,8 +323,6 @@ namespace hedra
                   removedHE.insert(leftHE[j]);
                   removedHE.insert(rightHE[k]);
                 }
-//                else
-//                  throw std::runtime_error("libhedra:stitch_boundaries: This should not happened! Report a bug at: https://github.com/avaxman/libhedra/issues");
                 break;
               }
             }
