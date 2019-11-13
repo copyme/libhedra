@@ -295,17 +295,16 @@ namespace hedra
           std::vector<int> leftOrphans(leftHE), rightOrphans(rightHE);
           for (size_t j = 0; j < leftHE.size(); j++)
           {
-            Eigen::RowVector3d vj = currV.row(HV(leftHE[j]));
             for (size_t k = 0; k < rightHE.size(); k++)
             {
-              if ((vj - currV.row(HV(rightHE[k]))).norm() < closeTolerance)
+              if (HV(leftHE[j]) == HV(rightHE[k]))
               {
                 /* consider a case when both edges from the pair are not parameter lines, i.e.,
                  * the edges have to be removed.
                  */
+                // remove the pair from the orphanage
                 if (!isParamHE[leftHE[j]] && !isParamHE[rightHE[k]] && !isParamVertex[HV(leftHE[j])])
                 {
-                  // remove the pair from the orphanage
                   leftOrphans.erase(std::find(leftOrphans.begin(), leftOrphans.end(), leftHE[j]));
                   rightOrphans.erase(std::find(rightOrphans.begin(), rightOrphans.end(), rightHE[k]));
                   // stich f0
@@ -333,10 +332,8 @@ namespace hedra
                 //rotated cross case
                 else if (!isParamHE[leftHE[j]] && !isParamHE[rightHE[k]] && isParamVertex[HV(leftHE[j])])
                 {
-                  // remove the pair from the orphanage
                   leftOrphans.erase(std::find(leftOrphans.begin(), leftOrphans.end(), leftHE[j]));
                   rightOrphans.erase(std::find(rightOrphans.begin(), rightOrphans.end(), rightHE[k]));
-
                   // stich f0
                   nextH(prevH(leftHE[j])) = twinH(prevH(twinH(prevH(rightHE[k]))));
                   prevH(twinH(prevH(twinH(prevH(rightHE[k]))))) = prevH(leftHE[j]);
@@ -359,10 +356,9 @@ namespace hedra
           // orphants
           for (size_t j = 0; j < leftOrphans.size(); j++)
           {
-            Eigen::RowVector3d vj = currV.row(HV(leftOrphans[j]));
             for (size_t k = 0; k < rightHE.size(); k++)
             {
-              if ((vj - currV.row(HV(nextH(rightHE[k])))).norm() < closeTolerance)
+              if (HV(nextH(rightHE[k])) == HV(leftOrphans[j]))
               {
                 if (!isParamHE[leftOrphans[j]] && !isParamVertex[HV(leftOrphans[j])])
                 {
@@ -383,7 +379,6 @@ namespace hedra
 
                   if (twinH(nextH(rightHE[k])) != -1)
                   {
-                    HV(nextH(twinH(nextH(rightHE[k])))) = HV(leftOrphans[j]);
                     auto it = std::find(rightOrphans.begin(), rightOrphans.end(), nextH(twinH(nextH(rightHE[k]))));
                     if (it != rightOrphans.end())
                       rightOrphans.erase(it); // avoid re-discovering for the second set of orphants if this is a middle grid connection
@@ -409,10 +404,9 @@ namespace hedra
           }
           for (size_t j = 0; j < rightOrphans.size(); j++)
           {
-            Eigen::RowVector3d vj = currV.row(HV(rightOrphans[j]));
             for (size_t k = 0; k < leftHE.size(); k++)
             {
-              if ((vj - currV.row(HV(nextH(leftHE[k])))).norm() < closeTolerance)
+              if (HV(nextH(leftHE[k])) == HV(rightOrphans[j]))
               {
                 if (!isParamHE[rightOrphans[j]] && !isParamVertex[HV(rightOrphans[j])])
                 {
