@@ -208,6 +208,44 @@ namespace hedra
         }
 
         Eigen::VectorXi oldHF = HF;
+        std::set<int> removedV;
+
+        // merge duplicated vertices
+        for (int i = 0; i < currV.rows(); i++)
+        {
+          if(removedV.find(i) != removedV.end())
+            continue;
+          Eigen::RowVector3d vi = currV.row(i);
+          for (int j = 0; j < HV.rows(); j++)
+          {
+            Eigen::RowVector3d vj = currV.row(HV(j));
+            if(HV(j) != i && (vi - vj).norm() < closeTolerance)
+            {
+              removedV.insert(HV(j));
+              HV(j) = i;
+            }
+          }
+        }
+
+        for(auto vi = removedV.rbegin(); vi != removedV.rend(); vi++)
+        {
+          //remove the row
+          assert(currV.rows() == VH.rows() && currV.rows() == isParamVertex.size());
+          int numRows = currV.rows() - 1;
+          if (*vi < numRows) {
+            currV.block(*vi, 0, numRows - *vi, 3) = currV.block(*vi + 1, 0, numRows - *vi, 3);
+            VH.block(*vi, 0, numRows - *vi, 1) = VH.block(*vi + 1, 0, numRows - *vi, 1);
+          }
+          currV.conservativeResize(numRows, 3);
+          VH.conservativeResize(numRows, 1);
+          isParamVertex.erase(isParamVertex.begin() + *vi);
+          //update IDs
+          for (int k = 0; k < HV.rows(); k++) {
+            if (HV(k) > *vi)
+              HV(k)--;
+          }
+        }
+        removedV.clear();
 
         //for every original inner edge, stitching up boundary (original boundary edges don't have any action item)
         for (int i = 0; i < triInnerEdges.size(); i++) {
@@ -217,7 +255,7 @@ namespace hedra
           int rightFace = triEF(currEdge, 1);
 
           // used to collect the ids of vertices and faces which are purly virtual
-          std::set<int> removedV, removedF, removedHE;
+          std::set<int> removedF, removedHE;
 
           std::vector<int> leftHE, rightHE;
           for (size_t k = 0; k < origEdges2HE[currEdge].size(); k++) {
@@ -285,8 +323,6 @@ namespace hedra
                   twinH(prevH(leftHE[j])) = prevH(rightHE[k]);
                   twinH(prevH(rightHE[k])) = prevH(leftHE[j]);
                   // garbage collector
-                  removedV.insert(HV(leftHE[j]));
-                  removedV.insert(HV(rightHE[k]));
                   removedHE.insert(leftHE[j]);
                   removedHE.insert(rightHE[k]);
 
@@ -300,13 +336,7 @@ namespace hedra
                   // remove the pair from the orphanage
                   leftOrphans.erase(std::find(leftOrphans.begin(), leftOrphans.end(), leftHE[j]));
                   rightOrphans.erase(std::find(rightOrphans.begin(), rightOrphans.end(), rightHE[k]));
-                  // conect to the same instance of the vertex
-                  int ecurr = twinH(prevH(rightHE[k]));
-                  while (ecurr != -1)
-                  {
-                    HV(ecurr) = HV(leftHE[j]);
-                    ecurr = twinH(prevH(ecurr));
-                  }
+
                   // stich f0
                   nextH(prevH(leftHE[j])) = twinH(prevH(twinH(prevH(rightHE[k]))));
                   prevH(twinH(prevH(twinH(prevH(rightHE[k]))))) = prevH(leftHE[j]);
@@ -319,7 +349,6 @@ namespace hedra
                   FH(HF(twinH(prevH(twinH(prevH(leftHE[j])))))) = twinH(prevH(twinH(prevH(leftHE[j]))));
 
                   //garnage collector
-                  removedV.insert(HV(rightHE[k]));
                   removedHE.insert(leftHE[j]);
                   removedHE.insert(rightHE[k]);
                 }
@@ -340,7 +369,6 @@ namespace hedra
                   nextH(prevH(leftOrphans[j])) = nextH(rightHE[k]); //
                   prevH(nextH(rightHE[k])) = prevH(leftOrphans[j]);
                   //garbage collector
-                  removedV.insert(HV(leftOrphans[j]));
                   removedHE.insert(leftOrphans[j]);
                   removedHE.insert(rightHE[k]);
 
@@ -350,9 +378,6 @@ namespace hedra
                 }
                 else if (isParamHE[leftOrphans[j]])
                 {
-                  removedV.insert(HV(nextH(rightHE[k])));
-                  HV(nextH(rightHE[k])) = HV(leftOrphans[j]);
-
                   twinH(leftOrphans[j]) = rightHE[k];
                   twinH(rightHE[k]) = leftOrphans[j];
 
@@ -371,12 +396,6 @@ namespace hedra
                   //garbage collector
                   removedHE.insert(leftOrphans[j]);
                   removedHE.insert(rightHE[k]);
-
-                  if(HV(leftOrphans[j]) != HV(nextH(rightHE[k])))
-                    removedV.insert(HV(leftOrphans[j]));
-
-                  //merge the cases
-                  HV(twinH(prevH(leftOrphans[j]))) = HV(nextH(rightHE[k]));
 
                   //ensure that a face is not refered to a removed edge
                   FH(HF(leftOrphans[j])) = nextH(leftOrphans[j]);
@@ -399,7 +418,6 @@ namespace hedra
                 {
                   nextH(prevH(rightOrphans[j])) = nextH(leftHE[k]);
                   prevH(nextH(leftHE[k])) = prevH(rightOrphans[j]);
-                  removedV.insert(HV(rightOrphans[j]));
                   removedHE.insert(rightOrphans[j]);
                   removedHE.insert(leftHE[k]);
 
@@ -409,8 +427,6 @@ namespace hedra
                 }
                 else if (isParamHE[rightOrphans[j]])
                 {
-                  removedV.insert(HV(rightOrphans[j]));
-                  HV(rightOrphans[j]) = HV(nextH(leftHE[k]));
                   twinH(leftHE[k]) = rightOrphans[j];
                   twinH(rightOrphans[j]) = leftHE[k];
                 }
@@ -418,12 +434,6 @@ namespace hedra
                 {
                   nextH(prevH(rightOrphans[j])) = nextH(leftHE[k]);
                   prevH(nextH(leftHE[k])) = prevH(rightOrphans[j]);
-
-                  if(HV(rightOrphans[j]) != HV(nextH(leftHE[k])))
-                    removedV.insert(HV(rightOrphans[j]));
-
-                  //merge the cases
-                  HV(twinH(prevH(rightOrphans[j]))) = HV(nextH(leftHE[k]));
 
                   removedHE.insert(rightOrphans[j]);
                   removedHE.insert(leftHE[k]);
