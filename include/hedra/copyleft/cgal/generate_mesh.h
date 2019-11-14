@@ -233,11 +233,9 @@ namespace hedra
           assert(currV.rows() == VH.rows() && currV.rows() == isParamVertex.size());
           int numRows = currV.rows() - 1;
           if (*vi < numRows) {
-            currV.block(*vi, 0, numRows - *vi, 3) = currV.block(*vi + 1, 0, numRows - *vi, 3);
-            VH.block(*vi, 0, numRows - *vi, 1) = VH.block(*vi + 1, 0, numRows - *vi, 1);
+            currV.block(*vi, 0, numRows - *vi, 3) = currV.block(*vi + 1, 0, numRows - *vi, 3).eval();
+            VH.segment(*vi, numRows - *vi) = VH.segment(*vi + 1,numRows - *vi).eval();
           }
-          currV.conservativeResize(numRows, 3);
-          VH.conservativeResize(numRows, 1);
           isParamVertex.erase(isParamVertex.begin() + *vi);
           //update IDs
           for (int k = 0; k < HV.rows(); k++) {
@@ -245,6 +243,9 @@ namespace hedra
               HV(k)--;
           }
         }
+        int numRows = currV.rows() - removedV.size();
+        currV.conservativeResize(numRows, 3);
+        VH.conservativeResize(numRows);
         removedV.clear();
 
         //for every original inner edge, stitching up boundary (original boundary edges don't have any action item)
@@ -253,6 +254,8 @@ namespace hedra
           int currEdge = triInnerEdges(i);
           int leftFace = triEF(currEdge, 0);
           int rightFace = triEF(currEdge, 1);
+
+          std::cout << "I: " << i << std::endl;
 
           // used to collect the ids of vertices and faces which are purly virtual
           std::set<int> removedF, removedHE;
@@ -275,7 +278,7 @@ namespace hedra
             Eigen::RowVector3d vj = currV.row(HV(leftHE[j]));
             for (size_t k = 0; k < rightHE.size(); k++)
             {
-              if ((vj - currV.row(HV(nextH(rightHE[k])))).norm() < closeTolerance && ! (isParamHE[leftHE[j]] && isParamHE[rightHE[k]]))
+              if (HV(leftHE[j]) == HV(nextH(rightHE[k])) && ! (isParamHE[leftHE[j]] && isParamHE[rightHE[k]]))
               {
                 int ebegin = rightHE[k];
                 int ecurr = ebegin;
@@ -452,27 +455,27 @@ namespace hedra
             //remove the row
             int numRows = FH.rows() - 1;
             if(*fid < numRows)
-              FH.block(*fid, 0, numRows - *fid, 1) = FH.block(*fid + 1, 0, numRows - *fid, 1);
-            FH.conservativeResize(numRows, 1);
+              FH.segment(*fid, numRows - *fid) = FH.segment(*fid + 1, numRows - *fid).eval();
 
             //update IDs
             for(int k = 0; k < HF.rows(); k++)
               if(HF(k) > *fid)
                 HF(k)--;
           }
+
+          int numRows =  FH.rows() - removedF.size();
+          FH.conservativeResize(numRows);
+
           //vertices
           for(auto vi = removedV.rbegin(); vi != removedV.rend(); vi++)
           {
             //remove the row
-            assert(currV.rows() == VH.rows() && currV.rows() == isParamVertex.size());
             int numRows = currV.rows() - 1;
             if(*vi < numRows)
             {
-              currV.block(*vi, 0, numRows - *vi, 3) = currV.block(*vi + 1, 0, numRows - *vi, 3);
-              VH.block(*vi, 0, numRows - *vi, 1) = VH.block(*vi + 1, 0, numRows - *vi, 1);
+              currV.block(*vi, 0, numRows - *vi, 3) = currV.block(*vi + 1, 0, numRows - *vi, 3).eval();
+              VH.segment(*vi,numRows - *vi) = VH.segment(*vi + 1,numRows - *vi).eval();
             }
-            currV.conservativeResize(numRows, 3);
-            VH.conservativeResize(numRows, 1);
             isParamVertex.erase(isParamVertex.begin() + *vi);
             //update IDs
             for(int k = 0; k < HV.rows(); k++)
@@ -481,49 +484,65 @@ namespace hedra
                 HV(k)--;
             }
           }
+
+          numRows = currV.rows() - removedV.size();
+          currV.conservativeResize(numRows, 3);
+          VH.conservativeResize(numRows);
+
           //edges
           for (auto he = removedHE.rbegin(); he != removedHE.rend(); he++)
           {
-            assert(HF.rows() == (int)((HV.rows() + nextH.rows() + prevH.rows() + twinH.rows() + HE2origEdges.size() + isParamHE.size())/ 6.));
-            int numRows = nextH.rows() - 1;
-
-            if(*he < numRows) {
-              HF.block(*he, 0, numRows - *he, 1) = HF.block(*he + 1, 0, numRows - *he, 1);
-              oldHF.block(*he, 0, numRows - *he, 1) = oldHF.block(*he + 1, 0, numRows - *he, 1);
-              HV.block(*he, 0, numRows - *he, 1) = HV.block(*he + 1, 0, numRows - *he, 1);
-              nextH.block(*he, 0, numRows - *he, 1) = nextH.block(*he + 1, 0, numRows - *he, 1);
-              prevH.block(*he, 0, numRows - *he, 1) = prevH.block(*he + 1, 0, numRows - *he, 1);
-              twinH.block(*he, 0, numRows - *he, 1) = twinH.block(*he + 1, 0, numRows - *he, 1);
+            // skipe a rediscovered useless edge, well normally it should not happen
+            if(*he > HF.rows())
+            {
+              continue;
             }
-            HF.conservativeResize(numRows, 1);
-            oldHF.conservativeResize(numRows, 1);
-            HV.conservativeResize(numRows, 1);
-            nextH.conservativeResize(numRows, 1);
-            prevH.conservativeResize(numRows, 1);
-            twinH.conservativeResize(numRows, 1);
-            HE2origEdges.erase(HE2origEdges.begin() + *he);
-            isParamHE.erase(isParamHE.begin() + *he);
+            int numRows = HE2origEdges.size() - 1;
+
+            if(*he < numRows)
+            {
+              HF.segment(*he, numRows - *he) = HF.segment(*he + 1, numRows - *he).eval();
+              oldHF.segment(*he, numRows - *he) = oldHF.segment(*he + 1, numRows - *he).eval();
+              HV.segment(*he, numRows - *he) = HV.segment(*he + 1, numRows - *he).eval();
+              nextH.segment(*he, numRows - *he) = nextH.segment(*he + 1, numRows - *he).eval();
+              twinH.segment(*he, numRows - *he) = twinH.segment(*he + 1, numRows - *he).eval();
+              prevH.segment(*he, numRows - *he) = prevH.segment(*he + 1, numRows - *he).eval();
+            }
+
+            HE2origEdges.erase(HE2origEdges.cbegin() + (*he));
+            isParamHE.erase(isParamHE.cbegin() + (*he));
 
             //update IDs
             for(int k = 0; k < FH.rows(); k++)
               if(FH(k) > *he)
                 FH(k)--;
+              else if (FH(k) == *he)
+                std::cout << "bad ref FH!" << std::endl;
 
             for(int k = 0; k < VH.rows(); k++)
               if(VH(k) > *he)
                 VH(k)--;
+              else if (VH(k) == *he && removedHE.find(*he) == removedHE.end())
+                std::cout << "bad ref VH!" << std::endl;
 
             for(int k = 0; k < nextH.rows(); k++)
               if(nextH(k) > *he)
                 nextH(k)--;
+              else if (nextH(k) == *he && removedHE.find(*he) == removedHE.end())
+                std::cout << "bad ref next! " << k << std::endl;
 
             for(int k = 0; k < prevH.rows(); k++)
               if(prevH(k) > *he)
                 prevH(k)--;
+              else if (prevH(k) == *he && removedHE.find(*he) == removedHE.end())
+                std::cout << "bad ref prev !" << std::endl;
 
             for(int k = 0; k < twinH.rows(); k++)
               if(twinH(k) > *he)
                 twinH(k)--;
+              else if (twinH(k) == *he && removedHE.find(*he) == removedHE.end())
+                std::cout << "bad ref twin!" << std::endl;
+
 
             for (size_t k = 0; k < origEdges2HE.size(); k++)
             {
@@ -535,6 +554,14 @@ namespace hedra
                   origEdges2HE[k][h]--;
             }
           }
+
+          numRows = HF.rows() - removedHE.size();
+          HF.conservativeResize(numRows);
+          oldHF.conservativeResize(numRows);
+          HV.conservativeResize(numRows);
+          nextH.conservativeResize(numRows);
+          prevH.conservativeResize(numRows);
+          twinH.conservativeResize(numRows);
         }
       }
 
