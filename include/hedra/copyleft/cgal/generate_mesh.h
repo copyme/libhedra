@@ -198,7 +198,7 @@ namespace hedra
                                         std::vector<int> & HE2origEdges,
                                         std::vector<bool> & isParamHE,
                                         std::vector<int> & overlayFace2Tri,
-                                        const double closeTolerance = 10e-8) {
+                                        const double closeTolerance = 10e-30) {
         // create a map from the original edges to the half-edges
         std::vector<std::vector<int> > origEdges2HE(triEF.rows());
         for (int i = 0; i < HE2origEdges.size(); i++) {
@@ -227,15 +227,20 @@ namespace hedra
           }
         }
 
+        std::cout << currV.rows() << " to remove " << removedV.size() << std::endl;
+
         for(auto vi = removedV.rbegin(); vi != removedV.rend(); vi++)
         {
+
+          std::cout << currV.row(*vi).transpose() << std::endl << std::endl;
           //remove the row
-          assert(currV.rows() == VH.rows() && currV.rows() == isParamVertex.size());
           int numRows = currV.rows() - 1;
           if (*vi < numRows) {
             currV.block(*vi, 0, numRows - *vi, 3) = currV.block(*vi + 1, 0, numRows - *vi, 3).eval();
             VH.segment(*vi, numRows - *vi) = VH.segment(*vi + 1,numRows - *vi).eval();
           }
+          currV.conservativeResize(numRows, 3);
+          VH.conservativeResize(numRows);
           isParamVertex.erase(isParamVertex.begin() + *vi);
           //update IDs
           for (int k = 0; k < HV.rows(); k++) {
@@ -243,9 +248,6 @@ namespace hedra
               HV(k)--;
           }
         }
-        int numRows = currV.rows() - removedV.size();
-        currV.conservativeResize(numRows, 3);
-        VH.conservativeResize(numRows);
         removedV.clear();
 
         //for every original inner edge, stitching up boundary (original boundary edges don't have any action item)
@@ -255,7 +257,6 @@ namespace hedra
           int leftFace = triEF(currEdge, 0);
           int rightFace = triEF(currEdge, 1);
 
-          std::cout << "I: " << i << std::endl;
 
           // used to collect the ids of vertices and faces which are purly virtual
           std::set<int> removedF, removedHE;
@@ -302,6 +303,11 @@ namespace hedra
             {
               if (HV(leftHE[j]) == HV(rightHE[k]))
               {
+
+                int right = rightHE[k];
+                int left = leftHE[j];
+                std::cout << right << " " << left << " " << HV(leftHE[j]) << std::endl;
+
                 /* consider a case when both edges from the pair are not parameter lines, i.e.,
                  * the edges have to be removed.
                  */
@@ -456,15 +462,12 @@ namespace hedra
             int numRows = FH.rows() - 1;
             if(*fid < numRows)
               FH.segment(*fid, numRows - *fid) = FH.segment(*fid + 1, numRows - *fid).eval();
-
+            FH.conservativeResize(numRows);
             //update IDs
             for(int k = 0; k < HF.rows(); k++)
               if(HF(k) > *fid)
                 HF(k)--;
           }
-
-          int numRows =  FH.rows() - removedF.size();
-          FH.conservativeResize(numRows);
 
           //vertices
           for(auto vi = removedV.rbegin(); vi != removedV.rend(); vi++)
@@ -476,6 +479,8 @@ namespace hedra
               currV.block(*vi, 0, numRows - *vi, 3) = currV.block(*vi + 1, 0, numRows - *vi, 3).eval();
               VH.segment(*vi,numRows - *vi) = VH.segment(*vi + 1,numRows - *vi).eval();
             }
+            currV.conservativeResize(numRows, 3);
+            VH.conservativeResize(numRows);
             isParamVertex.erase(isParamVertex.begin() + *vi);
             //update IDs
             for(int k = 0; k < HV.rows(); k++)
@@ -484,10 +489,6 @@ namespace hedra
                 HV(k)--;
             }
           }
-
-          numRows = currV.rows() - removedV.size();
-          currV.conservativeResize(numRows, 3);
-          VH.conservativeResize(numRows);
 
           //edges
           for (auto he = removedHE.rbegin(); he != removedHE.rend(); he++)
@@ -508,6 +509,13 @@ namespace hedra
               twinH.segment(*he, numRows - *he) = twinH.segment(*he + 1, numRows - *he).eval();
               prevH.segment(*he, numRows - *he) = prevH.segment(*he + 1, numRows - *he).eval();
             }
+
+            HF.conservativeResize(numRows);
+            oldHF.conservativeResize(numRows);
+            HV.conservativeResize(numRows);
+            nextH.conservativeResize(numRows);
+            twinH.conservativeResize(numRows);
+            prevH.conservativeResize(numRows);
 
             HE2origEdges.erase(HE2origEdges.cbegin() + (*he));
             isParamHE.erase(isParamHE.cbegin() + (*he));
@@ -554,14 +562,6 @@ namespace hedra
                   origEdges2HE[k][h]--;
             }
           }
-
-          numRows = HF.rows() - removedHE.size();
-          HF.conservativeResize(numRows);
-          oldHF.conservativeResize(numRows);
-          HV.conservativeResize(numRows);
-          nextH.conservativeResize(numRows);
-          prevH.conservativeResize(numRows);
-          twinH.conservativeResize(numRows);
         }
       }
 
