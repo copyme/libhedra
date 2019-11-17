@@ -206,7 +206,7 @@ namespace hedra
             continue;
           origEdges2HE[HE2origEdges[i]].push_back(i);
         }
-
+        int missFH = 0;
         Eigen::VectorXi oldHF = HF;
         std::set<int> removedV;
 
@@ -227,12 +227,8 @@ namespace hedra
           }
         }
 
-        std::cout << currV.rows() << " to remove " << removedV.size() << std::endl;
-
         for(auto vi = removedV.rbegin(); vi != removedV.rend(); vi++)
         {
-
-          std::cout << currV.row(*vi).transpose() << std::endl << std::endl;
           //remove the row
           int numRows = currV.rows() - 1;
           if (*vi < numRows) {
@@ -250,6 +246,20 @@ namespace hedra
         }
         removedV.clear();
 
+        // bind faces with parameter lines
+        for (size_t k = 0; k < FH.size(); k++) {
+          int ebegin = FH(k);
+          int ecurr = ebegin;
+          do {
+            if (isParamHE[ecurr]) {
+              FH(k) = ecurr;
+              break;
+            }
+            ecurr = nextH(ecurr);
+          } while (ebegin != ecurr);
+        }
+
+
         //for every original inner edge, stitching up boundary (original boundary edges don't have any action item)
         for (int i = 0; i < triInnerEdges.size(); i++) {
           //first sorting to left and right edges according to faces
@@ -257,9 +267,8 @@ namespace hedra
           int leftFace = triEF(currEdge, 0);
           int rightFace = triEF(currEdge, 1);
 
-
           // used to collect the ids of vertices and faces which are purly virtual
-          std::set<int> removedF, removedHE;
+          std::set<int> removedHE;
 
           std::vector<int> leftHE, rightHE;
           for (size_t k = 0; k < origEdges2HE[currEdge].size(); k++) {
@@ -276,21 +285,16 @@ namespace hedra
           // first updated edge to face map for faces which are going to be removed
           for (size_t j = 0; j < leftHE.size(); j++)
           {
-            Eigen::RowVector3d vj = currV.row(HV(leftHE[j]));
             for (size_t k = 0; k < rightHE.size(); k++)
             {
               if (HV(leftHE[j]) == HV(nextH(rightHE[k])) && ! (isParamHE[leftHE[j]] && isParamHE[rightHE[k]]))
               {
                 int ebegin = rightHE[k];
                 int ecurr = ebegin;
-
-                // if a face is split up between multiple tirangles i.e. more than 2 then we can rediscover the same pieces.
-                if(HF(ecurr) != HF(leftHE[j]))
-                  removedF.insert(HF(ecurr));
-                  do {
-                    HF(ecurr) = HF(leftHE[j]);
-                    ecurr = nextH(ecurr);
-                  } while (ebegin != ecurr);
+                do {
+                  HF(ecurr) = HF(leftHE[j]);
+                  ecurr = nextH(ecurr);
+                } while (ebegin != ecurr);
               }
             }
           }
@@ -306,7 +310,6 @@ namespace hedra
 
                 int right = rightHE[k];
                 int left = leftHE[j];
-                std::cout << right << " " << left << " " << HV(leftHE[j]) << std::endl;
 
                 /* consider a case when both edges from the pair are not parameter lines, i.e.,
                  * the edges have to be removed.
@@ -314,11 +317,21 @@ namespace hedra
                 // remove the pair from the orphanage
                 if (!isParamHE[leftHE[j]] && !isParamHE[rightHE[k]] && !isParamVertex[HV(leftHE[j])])
                 {
-                  leftOrphans.erase(std::find(leftOrphans.begin(), leftOrphans.end(), leftHE[j]));
-                  rightOrphans.erase(std::find(rightOrphans.begin(), rightOrphans.end(), rightHE[k]));
+                  auto it = std::find(leftOrphans.begin(), leftOrphans.end(), leftHE[j]);
+                  if(it != leftOrphans.end())
+                    leftOrphans.erase(it);
+                  else
+                    continue;
+                  it = std::find(rightOrphans.begin(), rightOrphans.end(), rightHE[k]);
+                  if(it != rightOrphans.end())
+                    rightOrphans.erase(it);
+                  else
+                    continue;
+
                   // stich f0
                   nextH(prevH(leftHE[j])) = nextH(twinH(prevH(rightHE[k])));
                   prevH(nextH(twinH(prevH(rightHE[k])))) = prevH(leftHE[j]);
+
                   // stich f1
                   nextH(prevH(rightHE[k])) = nextH(twinH(prevH(leftHE[j])));
                   prevH(nextH(twinH(prevH(leftHE[j])))) = prevH(rightHE[k]);
@@ -335,10 +348,10 @@ namespace hedra
                   removedHE.insert(rightHE[k]);
 
                   //ensure that a face is not refered to a removed edge
-                  FH(HF(twinH(prevH(leftHE[j])))) = nextH(twinH(prevH(leftHE[j])));
-                  FH(HF(leftHE[j])) = prevH(leftHE[j]);
+                  FH(HF(twinH(prevH(leftHE[j])))) = prevH(rightHE[k]);
+                  FH(HF(twinH(prevH(rightHE[k])))) = prevH(leftHE[j]);
                 }
-                //rotated cross case
+                  //rotated cross case
                 else if (!isParamHE[leftHE[j]] && !isParamHE[rightHE[k]] && isParamVertex[HV(leftHE[j])])
                 {
                   leftOrphans.erase(std::find(leftOrphans.begin(), leftOrphans.end(), leftHE[j]));
@@ -346,13 +359,11 @@ namespace hedra
                   // stich f0
                   nextH(prevH(leftHE[j])) = twinH(prevH(twinH(prevH(rightHE[k]))));
                   prevH(twinH(prevH(twinH(prevH(rightHE[k]))))) = prevH(leftHE[j]);
+
                   // stich f1
                   nextH(prevH(rightHE[k])) = twinH(prevH(twinH(prevH(leftHE[j]))));
                   prevH(twinH(prevH(twinH(prevH(leftHE[j]))))) = prevH(rightHE[k]);
                   //ensure that a face is not refered to a removed edge
-
-                  FH(HF(leftHE[j])) = prevH(leftHE[j]);
-                  FH(HF(twinH(prevH(twinH(prevH(leftHE[j])))))) = twinH(prevH(twinH(prevH(leftHE[j]))));
 
                   //garnage collector
                   removedHE.insert(leftHE[j]);
@@ -376,22 +387,11 @@ namespace hedra
                   //garbage collector
                   removedHE.insert(leftOrphans[j]);
                   removedHE.insert(rightHE[k]);
-
-                  //ensure that a face is not refered to a removed edge
-                  FH(HF(leftOrphans[j])) = nextH(leftOrphans[j]);
-                  FH(HF(rightHE[k])) = prevH(rightHE[k]);
                 }
                 else if (isParamHE[leftOrphans[j]])
                 {
                   twinH(leftOrphans[j]) = rightHE[k];
                   twinH(rightHE[k]) = leftOrphans[j];
-
-                  if (twinH(nextH(rightHE[k])) != -1)
-                  {
-                    auto it = std::find(rightOrphans.begin(), rightOrphans.end(), nextH(twinH(nextH(rightHE[k]))));
-                    if (it != rightOrphans.end())
-                      rightOrphans.erase(it); // avoid re-discovering for the second set of orphants if this is a middle grid connection
-                  }
                 }
                 else if (!isParamHE[leftOrphans[j]] && isParamVertex[HV(leftOrphans[j])])
                 {
@@ -400,10 +400,6 @@ namespace hedra
                   //garbage collector
                   removedHE.insert(leftOrphans[j]);
                   removedHE.insert(rightHE[k]);
-
-                  //ensure that a face is not refered to a removed edge
-                  FH(HF(leftOrphans[j])) = nextH(leftOrphans[j]);
-                  FH(HF(rightHE[k])) = prevH(rightHE[k]);
                 }
                 else
                   throw std::runtime_error("libhedra:stitch_boundaries: This should not happened! Report a bug at: https://github.com/avaxman/libhedra/issues");
@@ -423,10 +419,6 @@ namespace hedra
                   prevH(nextH(leftHE[k])) = prevH(rightOrphans[j]);
                   removedHE.insert(rightOrphans[j]);
                   removedHE.insert(leftHE[k]);
-
-                  //ensure that a face is not refered to a removed edge
-                  FH(HF(rightOrphans[j])) = prevH(rightOrphans[j]);
-                  FH(HF(leftHE[k])) = nextH(leftHE[k]);
                 }
                 else if (isParamHE[rightOrphans[j]])
                 {
@@ -440,10 +432,6 @@ namespace hedra
 
                   removedHE.insert(rightOrphans[j]);
                   removedHE.insert(leftHE[k]);
-
-                  //ensure that a face is not refered to a removed edge
-                  FH(HF(rightOrphans[j])) = prevH(rightOrphans[j]);
-                  FH(HF(leftHE[k])) = nextH(leftHE[k]);
                 }
                 else
                   throw std::runtime_error("libhedra:stitch_boundaries: This should not happened! Report a bug at: https://github.com/avaxman/libhedra/issues");
@@ -455,40 +443,6 @@ namespace hedra
           /* removed virtual objects
            *
            */
-          //faces
-          for(auto fid = removedF.rbegin(); fid != removedF.rend(); fid++)
-          {
-            //remove the row
-            int numRows = FH.rows() - 1;
-            if(*fid < numRows)
-              FH.segment(*fid, numRows - *fid) = FH.segment(*fid + 1, numRows - *fid).eval();
-            FH.conservativeResize(numRows);
-            //update IDs
-            for(int k = 0; k < HF.rows(); k++)
-              if(HF(k) > *fid)
-                HF(k)--;
-          }
-
-          //vertices
-          for(auto vi = removedV.rbegin(); vi != removedV.rend(); vi++)
-          {
-            //remove the row
-            int numRows = currV.rows() - 1;
-            if(*vi < numRows)
-            {
-              currV.block(*vi, 0, numRows - *vi, 3) = currV.block(*vi + 1, 0, numRows - *vi, 3).eval();
-              VH.segment(*vi,numRows - *vi) = VH.segment(*vi + 1,numRows - *vi).eval();
-            }
-            currV.conservativeResize(numRows, 3);
-            VH.conservativeResize(numRows);
-            isParamVertex.erase(isParamVertex.begin() + *vi);
-            //update IDs
-            for(int k = 0; k < HV.rows(); k++)
-            {
-              if(HV(k) > *vi)
-                HV(k)--;
-            }
-          }
 
           //edges
           for (auto he = removedHE.rbegin(); he != removedHE.rend(); he++)
@@ -524,8 +478,6 @@ namespace hedra
             for(int k = 0; k < FH.rows(); k++)
               if(FH(k) > *he)
                 FH(k)--;
-              else if (FH(k) == *he)
-                std::cout << "bad ref FH!" << std::endl;
 
             for(int k = 0; k < VH.rows(); k++)
               if(VH(k) > *he)
@@ -562,6 +514,26 @@ namespace hedra
                   origEdges2HE[k][h]--;
             }
           }
+        }
+
+        //removed unreferenced faces
+        std::vector<int>hitFaces(FH.rows(), 0);
+        for(int k = 0; k < HF.rows(); k++)
+          hitFaces[HF(k)]++;
+
+        for(int fid = hitFaces.size() - 1; fid >= 0; fid--)
+        {
+          if(hitFaces[fid])
+            continue;
+          //remove the row
+          int numRows = FH.rows() - 1;
+          if(fid < numRows)
+            FH.segment(fid, numRows - fid) = FH.segment(fid + 1, numRows - fid).eval();
+          FH.conservativeResize(numRows);
+          //update IDs
+          for(int k = 0; k < HF.rows(); k++)
+            if(HF(k) > fid)
+              HF(k)--;
         }
       }
 
