@@ -184,9 +184,13 @@ namespace hedra
       // closeTolerance   value with which the new vertices are stiched
 
       // Output:
-      IGL_INLINE void stitch_boundaries(const Eigen::MatrixXi & triEF,
+      IGL_INLINE void stitch_boundaries(
+                                        const Eigen::MatrixXi & F,
+                                        const Eigen::MatrixXd & V,
+                                        const Eigen::MatrixXi & triEF,
                                         const Eigen::VectorXi & triInnerEdges,
                                         Eigen::MatrixXd & currV,
+                                        const Eigen::MatrixXi & EV,
                                         Eigen::VectorXi & VH,
                                         Eigen::VectorXi & HV,
                                         Eigen::VectorXi & HF,
@@ -198,7 +202,7 @@ namespace hedra
                                         std::vector<int> & HE2origEdges,
                                         std::vector<bool> & isParamHE,
                                         std::vector<int> & overlayFace2Tri,
-                                        const double closeTolerance = 10e-30) {
+                                        const double closeTolerance = 10e-7) {
         // create a map from the original edges to the half-edges
         std::vector<std::vector<int> > origEdges2HE(triEF.rows());
         for (int i = 0; i < HE2origEdges.size(); i++) {
@@ -206,45 +210,7 @@ namespace hedra
             continue;
           origEdges2HE[HE2origEdges[i]].push_back(i);
         }
-        int missFH = 0;
         Eigen::VectorXi oldHF = HF;
-        std::set<int> removedV;
-
-        // merge duplicated vertices
-        for (int i = 0; i < currV.rows(); i++)
-        {
-          if(removedV.find(i) != removedV.end())
-            continue;
-          Eigen::RowVector3d vi = currV.row(i);
-          for (int j = 0; j < HV.rows(); j++)
-          {
-            Eigen::RowVector3d vj = currV.row(HV(j));
-            if(HV(j) != i && (vi - vj).norm() < closeTolerance)
-            {
-              removedV.insert(HV(j));
-              HV(j) = i;
-            }
-          }
-        }
-
-        for(auto vi = removedV.rbegin(); vi != removedV.rend(); vi++)
-        {
-          //remove the row
-          int numRows = currV.rows() - 1;
-          if (*vi < numRows) {
-            currV.block(*vi, 0, numRows - *vi, 3) = currV.block(*vi + 1, 0, numRows - *vi, 3).eval();
-            VH.segment(*vi, numRows - *vi) = VH.segment(*vi + 1,numRows - *vi).eval();
-          }
-          currV.conservativeResize(numRows, 3);
-          VH.conservativeResize(numRows);
-          isParamVertex.erase(isParamVertex.begin() + *vi);
-          //update IDs
-          for (int k = 0; k < HV.rows(); k++) {
-            if (HV(k) > *vi)
-              HV(k)--;
-          }
-        }
-        removedV.clear();
 
         // bind faces with parameter lines
         for (size_t k = 0; k < FH.size(); k++) {
@@ -259,16 +225,12 @@ namespace hedra
           } while (ebegin != ecurr);
         }
 
-
         //for every original inner edge, stitching up boundary (original boundary edges don't have any action item)
         for (int i = 0; i < triInnerEdges.size(); i++) {
           //first sorting to left and right edges according to faces
           int currEdge = triInnerEdges(i);
           int leftFace = triEF(currEdge, 0);
           int rightFace = triEF(currEdge, 1);
-
-          // used to collect the ids of vertices and faces which are purly virtual
-          std::set<int> removedHE;
 
           std::vector<int> leftHE, rightHE;
           for (size_t k = 0; k < origEdges2HE[currEdge].size(); k++) {
@@ -281,164 +243,138 @@ namespace hedra
               throw std::runtime_error("libhedra:stitch_boundaries: This should not happened! Report a bug at: https://github.com/avaxman/libhedra/issues");
           }
 
+          //sort left and right edges
+          Eigen::RowVector3d ref = V.row(EV(currEdge, 1));
+          std::stable_sort(leftHE.begin(), leftHE.end(),
+                    [&ref, &HV, &currV](const int & a, const int & b) -> bool
+                    {
+                      double distA = (ref - currV.row(HV(a))).norm();
+                      double distB = (ref - currV.row(HV(b))).norm();
+                      return distA < distB;
+                    }
+              );
+
+          std::stable_sort(rightHE.begin(), rightHE.end(),
+                    [&ref, &HV, &currV](const int & a, const int & b) -> bool
+                    {
+                      double distA = (ref - currV.row(HV(a))).norm();
+                      double distB = (ref - currV.row(HV(b))).norm();
+                      return distA < distB;
+                    }
+          );
+
+          std::set<int>  removedHE, removedV;
+
           //if the parameterization is seamless, left and right halfedges should be perfectly matched, but it's not always the case
           // first updated edge to face map for faces which are going to be removed
+
+          assert(leftHE.size() == rightHE.size());
+
           for (size_t j = 0; j < leftHE.size(); j++)
           {
-            for (size_t k = 0; k < rightHE.size(); k++)
-            {
-              if (HV(leftHE[j]) == HV(nextH(rightHE[k])) && ! (isParamHE[leftHE[j]] && isParamHE[rightHE[k]]))
+            Eigen::RowVector3d vi = currV.row(HV(leftHE[j]));
+            Eigen::RowVector3d vj = currV.row(HV(nextH(rightHE[j])));
+            std::cout << (vi - vj).norm() << std::endl;
+              if (!(isParamHE[leftHE[j]] && isParamHE[rightHE[j]]))
               {
-                int ebegin = rightHE[k];
+                int ebegin = rightHE[j];
                 int ecurr = ebegin;
                 do {
                   HF(ecurr) = HF(leftHE[j]);
                   ecurr = nextH(ecurr);
                 } while (ebegin != ecurr);
               }
-            }
           }
 
           //find maching source vertices from left to right
-          std::vector<int> leftOrphans(leftHE), rightOrphans(rightHE);
-          for (size_t j = 0; j < leftHE.size(); j++)
-          {
-            for (size_t k = 0; k < rightHE.size(); k++)
-            {
-              if (HV(leftHE[j]) == HV(rightHE[k]))
-              {
+          for (size_t j = 1; j < leftHE.size(); j++) {
+            /* consider a case when both edges from the pair are not parameter lines, i.e.,
+             * the edges have to be removed.
+             */
+            // remove the pair from the orphanage
+            if (! (isParamHE[leftHE[j]] && isParamHE[rightHE[j]] && isParamVertex[HV(leftHE[j])])) {
+              nextH(prevH(leftHE[j])) = nextH(nextH(rightHE[j]));
+              prevH(nextH(nextH(rightHE[j]))) = prevH(leftHE[j]);
+              nextH(twinH(nextH(rightHE[j]))) = nextH(twinH(prevH(leftHE[j])));
+              prevH(nextH(twinH(prevH(leftHE[j])))) = twinH(nextH(rightHE[j]));
 
-                int right = rightHE[k];
-                int left = leftHE[j];
+              // garbage collector
+              removedHE.insert(twinH(prevH(leftHE[j])));
+              removedHE.insert(nextH(rightHE[j]));
 
-                /* consider a case when both edges from the pair are not parameter lines, i.e.,
-                 * the edges have to be removed.
-                 */
-                // remove the pair from the orphanage
-                if (!isParamHE[leftHE[j]] && !isParamHE[rightHE[k]] && !isParamVertex[HV(leftHE[j])])
-                {
-                  auto it = std::find(leftOrphans.begin(), leftOrphans.end(), leftHE[j]);
-                  if(it != leftOrphans.end())
-                    leftOrphans.erase(it);
-                  else
-                    continue;
-                  it = std::find(rightOrphans.begin(), rightOrphans.end(), rightHE[k]);
-                  if(it != rightOrphans.end())
-                    rightOrphans.erase(it);
-                  else
-                    continue;
+              // stich twins
+              twinH(prevH(leftHE[j])) = twinH(nextH(rightHE[j]));
+              twinH(twinH(nextH(rightHE[j]))) = prevH(leftHE[j]);
 
-                  // stich f0
-                  nextH(prevH(leftHE[j])) = nextH(twinH(prevH(rightHE[k])));
-                  prevH(nextH(twinH(prevH(rightHE[k])))) = prevH(leftHE[j]);
 
-                  // stich f1
-                  nextH(prevH(rightHE[k])) = nextH(twinH(prevH(leftHE[j])));
-                  prevH(nextH(twinH(prevH(leftHE[j])))) = prevH(rightHE[k]);
+              // garbage collector
+              removedHE.insert(leftHE[j]);
+              removedHE.insert(rightHE[j]);
 
-                  // garbage collector
-                  removedHE.insert(twinH(prevH(leftHE[j])));
-                  removedHE.insert(twinH(prevH(rightHE[k])));
+              removedV.insert(HV(leftHE[j]));
+              removedV.insert(HV(nextH(rightHE[j])));
 
-                  // stich twins
-                  twinH(prevH(leftHE[j])) = prevH(rightHE[k]);
-                  twinH(prevH(rightHE[k])) = prevH(leftHE[j]);
-                  // garbage collector
-                  removedHE.insert(leftHE[j]);
-                  removedHE.insert(rightHE[k]);
+              //ensure that a face is not refered to a removed edge
+              FH(HF(twinH(prevH(leftHE[j])))) = twinH(nextH(rightHE[j]));
+              FH(HF(nextH(rightHE[j]))) = prevH(leftHE[j]);
+            }
+              //rotated cross case
+            else if (! (isParamHE[leftHE[j]] && isParamHE[rightHE[j]]) && isParamVertex[HV(leftHE[j])]) {
+              // stich f0
+              nextH(prevH(leftHE[j])) = twinH(prevH(twinH(prevH(rightHE[j]))));
+              prevH(twinH(prevH(twinH(prevH(rightHE[j]))))) = prevH(leftHE[j]);
 
-                  //ensure that a face is not refered to a removed edge
-                  FH(HF(twinH(prevH(leftHE[j])))) = prevH(rightHE[k]);
-                  FH(HF(twinH(prevH(rightHE[k])))) = prevH(leftHE[j]);
-                }
-                  //rotated cross case
-                else if (!isParamHE[leftHE[j]] && !isParamHE[rightHE[k]] && isParamVertex[HV(leftHE[j])])
-                {
-                  leftOrphans.erase(std::find(leftOrphans.begin(), leftOrphans.end(), leftHE[j]));
-                  rightOrphans.erase(std::find(rightOrphans.begin(), rightOrphans.end(), rightHE[k]));
-                  // stich f0
-                  nextH(prevH(leftHE[j])) = twinH(prevH(twinH(prevH(rightHE[k]))));
-                  prevH(twinH(prevH(twinH(prevH(rightHE[k]))))) = prevH(leftHE[j]);
+              // stich f1
+              nextH(prevH(rightHE[j])) = twinH(prevH(twinH(prevH(leftHE[j]))));
+              prevH(twinH(prevH(twinH(prevH(leftHE[j]))))) = prevH(rightHE[j]);
+              //ensure that a face is not refered to a removed edge
 
-                  // stich f1
-                  nextH(prevH(rightHE[k])) = twinH(prevH(twinH(prevH(leftHE[j]))));
-                  prevH(twinH(prevH(twinH(prevH(leftHE[j]))))) = prevH(rightHE[k]);
-                  //ensure that a face is not refered to a removed edge
-
-                  //garnage collector
-                  removedHE.insert(leftHE[j]);
-                  removedHE.insert(rightHE[k]);
-                }
-                break;
-              }
+              //garnage collector
+              removedHE.insert(leftHE[j]);
+              removedHE.insert(rightHE[j]);
+            } else if (isParamHE[leftHE[j]] && isParamHE[rightHE[j]]) {
+              twinH(leftHE[j]) = rightHE[j];
+              twinH(rightHE[j]) = leftHE[j];
+              removedV.insert(HV(nextH(rightHE[j])));
+              HV(nextH(rightHE[j])) = HV(leftHE[j]);
+              HV(nextH(twinH(nextH(rightHE[j])))) = HV(leftHE[j]);
             }
           }
-          // orphants
-          for (size_t j = 0; j < leftOrphans.size(); j++)
-          {
-            for (size_t k = 0; k < rightHE.size(); k++)
-            {
-              if (HV(nextH(rightHE[k])) == HV(leftOrphans[j]))
-              {
-                if (!isParamHE[leftOrphans[j]] && !isParamVertex[HV(leftOrphans[j])])
-                {
-                  nextH(prevH(leftOrphans[j])) = nextH(rightHE[k]); //
-                  prevH(nextH(rightHE[k])) = prevH(leftOrphans[j]);
-                  //garbage collector
-                  removedHE.insert(leftOrphans[j]);
-                  removedHE.insert(rightHE[k]);
-                }
-                else if (isParamHE[leftOrphans[j]])
-                {
-                  twinH(leftOrphans[j]) = rightHE[k];
-                  twinH(rightHE[k]) = leftOrphans[j];
-                }
-                else if (!isParamHE[leftOrphans[j]] && isParamVertex[HV(leftOrphans[j])])
-                {
-                  nextH(prevH(leftOrphans[j])) = nextH(rightHE[k]); //
-                  prevH(nextH(rightHE[k])) = prevH(leftOrphans[j]);
-                  //garbage collector
-                  removedHE.insert(leftOrphans[j]);
-                  removedHE.insert(rightHE[k]);
-                }
-                else
-                  throw std::runtime_error("libhedra:stitch_boundaries: This should not happened! Report a bug at: https://github.com/avaxman/libhedra/issues");
-                break;
-              }
-            }
-          }
-          for (size_t j = 0; j < rightOrphans.size(); j++)
-          {
-            for (size_t k = 0; k < leftHE.size(); k++)
-            {
-              if (HV(nextH(leftHE[k])) == HV(rightOrphans[j]))
-              {
-                if (!isParamHE[rightOrphans[j]] && !isParamVertex[HV(rightOrphans[j])])
-                {
-                  nextH(prevH(rightOrphans[j])) = nextH(leftHE[k]);
-                  prevH(nextH(leftHE[k])) = prevH(rightOrphans[j]);
-                  removedHE.insert(rightOrphans[j]);
-                  removedHE.insert(leftHE[k]);
-                }
-                else if (isParamHE[rightOrphans[j]])
-                {
-                  twinH(leftHE[k]) = rightOrphans[j];
-                  twinH(rightOrphans[j]) = leftHE[k];
-                }
-                else if (!isParamHE[rightOrphans[j]] && isParamVertex[HV(rightOrphans[j])])
-                {
-                  nextH(prevH(rightOrphans[j])) = nextH(leftHE[k]);
-                  prevH(nextH(leftHE[k])) = prevH(rightOrphans[j]);
 
-                  removedHE.insert(rightOrphans[j]);
-                  removedHE.insert(leftHE[k]);
-                }
-                else
-                  throw std::runtime_error("libhedra:stitch_boundaries: This should not happened! Report a bug at: https://github.com/avaxman/libhedra/issues");
-                break;
-              }
-            }
-          }
+          // merge edge ends
+          if (!isParamHE[leftHE[0]]) {
+            nextH(prevH(leftHE[0])) = nextH(rightHE[0]); //
+            prevH(nextH(rightHE[0])) = prevH(leftHE[0]);
+            //garbage collector
+            removedHE.insert(leftHE[0]);
+            removedHE.insert(rightHE[0]);
+            removedV.insert(HV(leftHE[0]));
+          } else if (isParamHE[leftHE[0]]) {
+            twinH(leftHE[0]) = rightHE[0];
+            twinH(rightHE[0]) = leftHE[0];
+            removedV.insert(HV(nextH(rightHE[0])));
+            HV(nextH(rightHE[0])) = HV(leftHE[0]);
+
+          } else
+            throw std::runtime_error(
+                "libhedra:stitch_boundaries: This should not happened! Report a bug at: https://github.com/avaxman/libhedra/issues");
+
+          int last = leftHE.size() - 1;
+          if (!isParamHE[rightHE[last]]) {
+            nextH(prevH(rightHE[last])) = nextH(leftHE[last]);
+            prevH(nextH(leftHE[last])) = prevH(rightHE[last]);
+            removedHE.insert(rightHE[last]);
+            removedHE.insert(leftHE[last]);
+            removedV.insert(HV(rightHE[last]));
+          } else if (isParamHE[rightHE[last]]) {
+            twinH(leftHE[last]) = rightHE[last];
+            twinH(rightHE[last]) = leftHE[last];
+
+            removedV.insert(HV(rightHE[last]));
+            HV(rightHE[last]) = HV(nextH(leftHE[last]));
+          } else
+            throw std::runtime_error(
+                "libhedra:stitch_boundaries: This should not happened! Report a bug at: https://github.com/avaxman/libhedra/issues");
 
           /* removed virtual objects
            *
@@ -514,6 +450,28 @@ namespace hedra
                   origEdges2HE[k][h]--;
             }
           }
+
+          //vertices
+          for(auto vi = removedV.rbegin(); vi != removedV.rend(); vi++)
+          {
+            //remove the row
+            int numRows = currV.rows() - 1;
+            if(*vi < numRows)
+            {
+              currV.block(*vi, 0, numRows - *vi, 3) = currV.block(*vi + 1, 0, numRows - *vi, 3).eval();
+              VH.segment(*vi,numRows - *vi) = VH.segment(*vi + 1,numRows - *vi).eval();
+            }
+            currV.conservativeResize(numRows, 3);
+            VH.conservativeResize(numRows);
+            isParamVertex.erase(isParamVertex.begin() + *vi);
+            //update IDs
+            for(int k = 0; k < HV.rows(); k++)
+            {
+              if(HV(k) > *vi)
+                HV(k)--;
+            }
+          }
+
         }
 
         //removed unreferenced faces
@@ -535,6 +493,10 @@ namespace hedra
             if(HF(k) > fid)
               HF(k)--;
         }
+
+//        std::vector<int>hitVers(VH.rows(), 0);
+//        for(int k = 0; k < HV.rows(); k++)
+//          hitVers[HV(k)]++;
       }
 
 
@@ -653,6 +615,7 @@ namespace hedra
           //Constructing the overlay arrangement
           Overlay_traits ot;
           overlay(triangleArr, paramArr, overlayArr, ot);
+
 
           //creating new halfedge structure from given mesh
           int formerNumVertices = currV.rows();
@@ -788,8 +751,10 @@ namespace hedra
           }
         }
 
+        std::cout << "Stitching!" << std::endl;
         //mesh unification
-        stitch_boundaries(EF, innerEdges, currV, VH, HV, HF, FH, nextH, prevH, twinH, isParamVertex, HE2origEdges, isParamHE, overlayFace2Triangle);
+        stitch_boundaries(F, V, EF, innerEdges, currV, EV, VH, HV, HF, FH, nextH, prevH, twinH, isParamVertex, HE2origEdges, isParamHE, overlayFace2Triangle);
+        std::cout << "Finalize!" << std::endl;
 
         //consolidation
         newV = currV;
