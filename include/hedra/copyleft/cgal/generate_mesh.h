@@ -244,7 +244,7 @@ namespace hedra
           }
 
           //sort left and right edges
-          Eigen::RowVector3d ref = V.row(EV(currEdge, 1));
+          Eigen::RowVector3d ref = V.row(EV(currEdge, 0));
           std::stable_sort(leftHE.begin(), leftHE.end(),
                     [&ref, &HV, &currV](const int & a, const int & b) -> bool
                     {
@@ -274,7 +274,6 @@ namespace hedra
           {
             Eigen::RowVector3d vi = currV.row(HV(leftHE[j]));
             Eigen::RowVector3d vj = currV.row(HV(nextH(rightHE[j])));
-            std::cout << (vi - vj).norm() << std::endl;
               if (!(isParamHE[leftHE[j]] && isParamHE[rightHE[j]]))
               {
                 int ebegin = rightHE[j];
@@ -292,7 +291,7 @@ namespace hedra
              * the edges have to be removed.
              */
             // remove the pair from the orphanage
-            if (! (isParamHE[leftHE[j]] && isParamHE[rightHE[j]] && isParamVertex[HV(leftHE[j])])) {
+            if (!isParamHE[leftHE[j]] && !isParamHE[rightHE[j]] && !isParamVertex[HV(leftHE[j])]) {
               nextH(prevH(leftHE[j])) = nextH(nextH(rightHE[j]));
               prevH(nextH(nextH(rightHE[j]))) = prevH(leftHE[j]);
               nextH(twinH(nextH(rightHE[j]))) = nextH(twinH(prevH(leftHE[j])));
@@ -319,19 +318,29 @@ namespace hedra
               FH(HF(nextH(rightHE[j]))) = prevH(leftHE[j]);
             }
               //rotated cross case
-            else if (! (isParamHE[leftHE[j]] && isParamHE[rightHE[j]]) && isParamVertex[HV(leftHE[j])]) {
-              // stich f0
-              nextH(prevH(leftHE[j])) = twinH(prevH(twinH(prevH(rightHE[j]))));
-              prevH(twinH(prevH(twinH(prevH(rightHE[j]))))) = prevH(leftHE[j]);
-
-              // stich f1
-              nextH(prevH(rightHE[j])) = twinH(prevH(twinH(prevH(leftHE[j]))));
-              prevH(twinH(prevH(twinH(prevH(leftHE[j]))))) = prevH(rightHE[j]);
-              //ensure that a face is not refered to a removed edge
+            else if (!isParamHE[leftHE[j]] && !isParamHE[rightHE[j]] && isParamVertex[HV(leftHE[j])]) {
+              // stitch f0
+              nextH(prevH(leftHE[j])) = nextH(rightHE[j]);
+              prevH(nextH(rightHE[j])) = prevH(leftHE[j]);
 
               //garnage collector
               removedHE.insert(leftHE[j]);
               removedHE.insert(rightHE[j]);
+
+              removedV.insert(HV(nextH(rightHE[j])));
+
+              // update vertex
+              int ebegin = rightHE[j];
+              int ecurr = ebegin;
+              do {
+                HV(nextH(ecurr)) = HV(leftHE[j]);
+                ecurr = twinH(nextH(ecurr));
+              } while (twinH(nextH(ecurr))  != -1);
+
+              // stitch f1
+              prevH(twinH(prevH(twinH(prevH(leftHE[j]))))) = twinH(nextH(twinH(nextH(rightHE[j]))));
+              nextH(twinH(nextH(twinH(nextH(rightHE[j]))))) = twinH(prevH(twinH(prevH(leftHE[j]))));
+
             } else if (isParamHE[leftHE[j]] && isParamHE[rightHE[j]]) {
               twinH(leftHE[j]) = rightHE[j];
               twinH(rightHE[j]) = leftHE[j];
@@ -493,10 +502,6 @@ namespace hedra
             if(HF(k) > fid)
               HF(k)--;
         }
-
-//        std::vector<int>hitVers(VH.rows(), 0);
-//        for(int k = 0; k < HV.rows(); k++)
-//          hitVers[HV(k)]++;
       }
 
 
