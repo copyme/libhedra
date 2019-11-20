@@ -546,9 +546,7 @@ namespace hedra
             if(k == j)
               continue;
             if((currV.row(HV(j)) - currV.row(HV(k))).norm() < closeTolerance)
-            {
               HV(j) = HV(k);
-            }
           }
         }
 
@@ -558,13 +556,18 @@ namespace hedra
           hitVers[HV(k)]++;
 
         for (int vid = hitVers.size() - 1; vid >= 0; vid--) {
-          if (hitVers[vid])
+          if (hitVers[vid] > 0)
             continue;
           //remove the row
           int numRows = VH.rows() - 1;
           if (vid < numRows)
+          {
+            currV.block(vid, 0, numRows - vid, 3) = currV.block(vid + 1, 0, numRows - vid, 3).eval();
             VH.segment(vid, numRows - vid) = VH.segment(vid + 1, numRows - vid).eval();
+          }
+          currV.conservativeResize(numRows, 3);
           VH.conservativeResize(numRows);
+          isParamVertex.erase(isParamVertex.begin() + vid);
           //update IDs
           for (int k = 0; k < HV.rows(); k++)
             if (HV(k) > vid)
