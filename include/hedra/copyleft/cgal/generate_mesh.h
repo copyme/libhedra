@@ -185,6 +185,8 @@ namespace hedra
 
       // Output:
       IGL_INLINE void stitch_boundaries(
+                                        std::vector<EPoint3D> & HE3D,
+                                        int resolution,
                                         const Eigen::MatrixXi & F,
                                         const Eigen::MatrixXd & V,
                                         const Eigen::MatrixXi & triEF,
@@ -202,7 +204,7 @@ namespace hedra
                                         std::vector<int> & HE2origEdges,
                                         std::vector<bool> & isParamHE,
                                         std::vector<int> & overlayFace2Tri,
-                                        const double closeTolerance = 10e-7) {
+                                        const double closeTolerance = 10e-30) {
         // create a map from the original edges to the half-edges
         std::vector<std::vector<int> > origEdges2HE(triEF.rows());
         for (int i = 0; i < HE2origEdges.size(); i++) {
@@ -227,10 +229,13 @@ namespace hedra
 
         //for every original inner edge, stitching up boundary (original boundary edges don't have any action item)
         for (int i = 0; i < triInnerEdges.size(); i++) {
+          std::cout << "I: " << i << std::endl;
           //first sorting to left and right edges according to faces
           int currEdge = triInnerEdges(i);
-          int leftFace = triEF(currEdge, 0);
-          int rightFace = triEF(currEdge, 1);
+          int leftFace = triEF(currEdge, 1);
+          int rightFace = triEF(currEdge, 0);
+
+          std::cout << leftFace << " right " << rightFace << std::endl;
 
           std::vector<int> leftHE, rightHE;
           for (size_t k = 0; k < origEdges2HE[currEdge].size(); k++) {
@@ -238,51 +243,65 @@ namespace hedra
               leftHE.push_back(origEdges2HE[currEdge][k]);
             } else if (overlayFace2Tri[oldHF(origEdges2HE[currEdge][k])] == rightFace) {
               rightHE.push_back(origEdges2HE[currEdge][k]);
-            }
-            else
-              throw std::runtime_error("libhedra:stitch_boundaries: This should not happened! Report a bug at: https://github.com/avaxman/libhedra/issues");
+            } else
+              throw std::runtime_error(
+                  "libhedra:stitch_boundaries: This should not happened! Report a bug at: https://github.com/avaxman/libhedra/issues");
           }
 
-          //sort left and right edges
-          Eigen::RowVector3d ref = V.row(EV(currEdge, 0));
-          std::stable_sort(leftHE.begin(), leftHE.end(),
-                    [&ref, &HV, &currV](const int & a, const int & b) -> bool
-                    {
-                      double distA = (ref - currV.row(HV(a))).norm();
-                      double distB = (ref - currV.row(HV(b))).norm();
-                      return distA < distB;
-                    }
-              );
 
-          std::stable_sort(rightHE.begin(), rightHE.end(),
-                    [&ref, &HV, &currV](const int & a, const int & b) -> bool
-                    {
-                      double distA = (ref - currV.row(HV(a))).norm();
-                      double distB = (ref - currV.row(HV(b))).norm();
-                      return distA < distB;
-                    }
+          //sort left and right edges
+          Eigen::RowVector3d refV = V.row(EV(currEdge, 0)) - (V.row(EV(currEdge, 1)) - V.row(EV(currEdge, 0))) * 2.;
+          EPoint3D ref(ENumber((int) (refV(0) * (double) resolution), resolution),
+                               ENumber((int) (refV(1) * (double) resolution), resolution),
+                               ENumber((int) (refV(2) * (double) resolution), resolution)
           );
 
-          std::set<int>  removedHE, removedV;
+          std::stable_sort(leftHE.begin(), leftHE.end(),
+                           [&ref, &HE3D, &HV](const int &a, const int &b) -> bool {
+                             EPoint3D A = HE3D[HV(a)];
+                             EPoint3D B = HE3D[HV(b)];
+                             return CGAL::has_smaller_distance_to_point(ref, A, B);
+                           }
+          );
+
+          std::stable_sort(rightHE.begin(), rightHE.end(),
+                           [&ref, &HE3D, &HV](const int &a, const int &b) -> bool {
+                             EPoint3D A = HE3D[HV(a)];
+                             EPoint3D B = HE3D[HV(b)];
+                             return CGAL::has_smaller_distance_to_point(ref, A, B);
+
+                           }
+          );
+
+          EPoint3D A = HE3D[HV(leftHE[0])];
+          EPoint3D B = HE3D[HV(rightHE[0])];
+          if(CGAL::has_smaller_distance_to_point(ref, B, A))
+          {
+            for(size_t k = 0; k < leftHE.size(); k++)
+              std::swap(leftHE[k], rightHE[k]);
+          }
+
+          std::cout << leftHE.size() << " " << rightHE.size() << std::endl;
+
+          std::set<int> removedHE, removedV;
 
           //if the parameterization is seamless, left and right halfedges should be perfectly matched, but it's not always the case
           // first updated edge to face map for faces which are going to be removed
 
           assert(leftHE.size() == rightHE.size());
 
-          for (size_t j = 0; j < leftHE.size(); j++)
-          {
-            Eigen::RowVector3d vi = currV.row(HV(leftHE[j]));
-            Eigen::RowVector3d vj = currV.row(HV(nextH(rightHE[j])));
-              if (!(isParamHE[leftHE[j]] && isParamHE[rightHE[j]]))
-              {
-                int ebegin = rightHE[j];
-                int ecurr = ebegin;
-                do {
-                  HF(ecurr) = HF(leftHE[j]);
-                  ecurr = nextH(ecurr);
-                } while (ebegin != ecurr);
-              }
+          for (size_t j = 0; j < leftHE.size(); j++) {
+
+
+            if (!(isParamHE[leftHE[j]] && isParamHE[rightHE[j]])) {
+              int ebegin = rightHE[j];
+              int ecurr = ebegin;
+              do {
+                //std::cout << "BEGIN: " << ebegin << " NEXT: " << ecurr << std::endl;
+                HF(ecurr) = HF(leftHE[j]);
+                ecurr = nextH(ecurr);
+              } while (ebegin != ecurr);
+            }
           }
 
           //find maching source vertices from left to right
@@ -292,8 +311,16 @@ namespace hedra
              */
             // remove the pair from the orphanage
             if (!isParamHE[leftHE[j]] && !isParamHE[rightHE[j]] && !isParamVertex[HV(leftHE[j])]) {
+              std::cout << "I" << std::endl;
+
+
               nextH(prevH(leftHE[j])) = nextH(nextH(rightHE[j]));
+
               prevH(nextH(nextH(rightHE[j]))) = prevH(leftHE[j]);
+
+              std::cout << twinH(nextH(rightHE[j])) << " " <<  twinH(prevH(leftHE[j])) << std::endl;
+
+
               nextH(twinH(nextH(rightHE[j]))) = nextH(twinH(prevH(leftHE[j])));
               prevH(nextH(twinH(prevH(leftHE[j])))) = twinH(nextH(rightHE[j]));
 
@@ -319,6 +346,8 @@ namespace hedra
             }
               //rotated cross case
             else if (!isParamHE[leftHE[j]] && !isParamHE[rightHE[j]] && isParamVertex[HV(leftHE[j])]) {
+
+              std::cout << "II" << std::endl;
               // stitch f0
               nextH(prevH(leftHE[j])) = nextH(rightHE[j]);
               prevH(nextH(rightHE[j])) = prevH(leftHE[j]);
@@ -335,13 +364,15 @@ namespace hedra
               do {
                 HV(nextH(ecurr)) = HV(leftHE[j]);
                 ecurr = twinH(nextH(ecurr));
-              } while (twinH(nextH(ecurr))  != -1);
+              } while (twinH(nextH(ecurr)) != -1);
 
               // stitch f1
               prevH(twinH(prevH(twinH(prevH(leftHE[j]))))) = twinH(nextH(twinH(nextH(rightHE[j]))));
               nextH(twinH(nextH(twinH(nextH(rightHE[j]))))) = twinH(prevH(twinH(prevH(leftHE[j]))));
 
             } else if (isParamHE[leftHE[j]] && isParamHE[rightHE[j]]) {
+
+              std::cout << "III" << std::endl;
               twinH(leftHE[j]) = rightHE[j];
               twinH(rightHE[j]) = leftHE[j];
               removedV.insert(HV(nextH(rightHE[j])));
@@ -352,13 +383,18 @@ namespace hedra
 
           // merge edge ends
           if (!isParamHE[leftHE[0]]) {
+
+            std::cout << "IV" << std::endl;
             nextH(prevH(leftHE[0])) = nextH(rightHE[0]); //
             prevH(nextH(rightHE[0])) = prevH(leftHE[0]);
             //garbage collector
             removedHE.insert(leftHE[0]);
             removedHE.insert(rightHE[0]);
-            removedV.insert(HV(leftHE[0]));
+//            removedV.insert(HV(nextH(rightHE[0])));
+            HV(nextH(rightHE[0])) = HV(leftHE[0]);
+
           } else if (isParamHE[leftHE[0]]) {
+            std::cout << "V" << std::endl;
             twinH(leftHE[0]) = rightHE[0];
             twinH(rightHE[0]) = leftHE[0];
             removedV.insert(HV(nextH(rightHE[0])));
@@ -370,12 +406,16 @@ namespace hedra
 
           int last = leftHE.size() - 1;
           if (!isParamHE[rightHE[last]]) {
+            std::cout << "VI" << std::endl;
             nextH(prevH(rightHE[last])) = nextH(leftHE[last]);
             prevH(nextH(leftHE[last])) = prevH(rightHE[last]);
             removedHE.insert(rightHE[last]);
             removedHE.insert(leftHE[last]);
-            removedV.insert(HV(rightHE[last]));
+
+//            removedV.insert(HV(rightHE[last]));
+            HV(rightHE[last]) = HV(nextH(leftHE[last]));
           } else if (isParamHE[rightHE[last]]) {
+            std::cout << "VII" << std::endl;
             twinH(leftHE[last]) = rightHE[last];
             twinH(rightHE[last]) = leftHE[last];
 
@@ -390,17 +430,14 @@ namespace hedra
            */
 
           //edges
-          for (auto he = removedHE.rbegin(); he != removedHE.rend(); he++)
-          {
+          for (auto he = removedHE.rbegin(); he != removedHE.rend(); he++) {
             // skipe a rediscovered useless edge, well normally it should not happen
-            if(*he > HF.rows())
-            {
+            if (*he > HF.rows()) {
               continue;
             }
             int numRows = HE2origEdges.size() - 1;
 
-            if(*he < numRows)
-            {
+            if (*he < numRows) {
               HF.segment(*he, numRows - *he) = HF.segment(*he + 1, numRows - *he).eval();
               oldHF.segment(*he, numRows - *he) = oldHF.segment(*he + 1, numRows - *he).eval();
               HV.segment(*he, numRows - *he) = HV.segment(*he + 1, numRows - *he).eval();
@@ -419,64 +456,63 @@ namespace hedra
             HE2origEdges.erase(HE2origEdges.cbegin() + (*he));
             isParamHE.erase(isParamHE.cbegin() + (*he));
 
+
             //update IDs
-            for(int k = 0; k < FH.rows(); k++)
-              if(FH(k) > *he)
+            for (int k = 0; k < FH.rows(); k++)
+              if (FH(k) > *he)
                 FH(k)--;
 
-            for(int k = 0; k < VH.rows(); k++)
-              if(VH(k) > *he)
+            for (int k = 0; k < VH.rows(); k++)
+              if (VH(k) > *he)
                 VH(k)--;
               else if (VH(k) == *he && removedHE.find(*he) == removedHE.end())
                 std::cout << "bad ref VH!" << std::endl;
 
-            for(int k = 0; k < nextH.rows(); k++)
-              if(nextH(k) > *he)
+            for (int k = 0; k < nextH.rows(); k++)
+              if (nextH(k) > *he)
                 nextH(k)--;
               else if (nextH(k) == *he && removedHE.find(*he) == removedHE.end())
                 std::cout << "bad ref next! " << k << std::endl;
 
-            for(int k = 0; k < prevH.rows(); k++)
-              if(prevH(k) > *he)
+            for (int k = 0; k < prevH.rows(); k++)
+              if (prevH(k) > *he)
                 prevH(k)--;
               else if (prevH(k) == *he && removedHE.find(*he) == removedHE.end())
                 std::cout << "bad ref prev !" << std::endl;
 
-            for(int k = 0; k < twinH.rows(); k++)
-              if(twinH(k) > *he)
+            for (int k = 0; k < twinH.rows(); k++)
+              if (twinH(k) > *he)
                 twinH(k)--;
               else if (twinH(k) == *he && removedHE.find(*he) == removedHE.end())
                 std::cout << "bad ref twin!" << std::endl;
 
 
-            for (size_t k = 0; k < origEdges2HE.size(); k++)
-            {
+            for (size_t k = 0; k < origEdges2HE.size(); k++) {
               auto it = std::find(origEdges2HE[k].begin(), origEdges2HE[k].end(), *he);
               if (it != origEdges2HE[k].end())
                 origEdges2HE[k].erase(it);
-              for(size_t h = 0; h < origEdges2HE[k].size(); h++)
+              for (size_t h = 0; h < origEdges2HE[k].size(); h++)
                 if (origEdges2HE[k][h] > *he)
                   origEdges2HE[k][h]--;
             }
           }
 
           //vertices
-          for(auto vi = removedV.rbegin(); vi != removedV.rend(); vi++)
-          {
+          for (auto vi = removedV.rbegin(); vi != removedV.rend(); vi++) {
             //remove the row
             int numRows = currV.rows() - 1;
-            if(*vi < numRows)
-            {
+            if (*vi < numRows) {
               currV.block(*vi, 0, numRows - *vi, 3) = currV.block(*vi + 1, 0, numRows - *vi, 3).eval();
-              VH.segment(*vi,numRows - *vi) = VH.segment(*vi + 1,numRows - *vi).eval();
+              VH.segment(*vi, numRows - *vi) = VH.segment(*vi + 1, numRows - *vi).eval();
             }
             currV.conservativeResize(numRows, 3);
             VH.conservativeResize(numRows);
             isParamVertex.erase(isParamVertex.begin() + *vi);
+
+            HE3D.erase(HE3D.begin() + *vi);
             //update IDs
-            for(int k = 0; k < HV.rows(); k++)
-            {
-              if(HV(k) > *vi)
+            for (int k = 0; k < HV.rows(); k++) {
+              if (HV(k) > *vi)
                 HV(k)--;
             }
           }
@@ -484,23 +520,55 @@ namespace hedra
         }
 
         //removed unreferenced faces
-        std::vector<int>hitFaces(FH.rows(), 0);
-        for(int k = 0; k < HF.rows(); k++)
+        std::vector<int> hitFaces(FH.rows(), 0);
+        for (int k = 0; k < HF.rows(); k++)
           hitFaces[HF(k)]++;
 
-        for(int fid = hitFaces.size() - 1; fid >= 0; fid--)
-        {
-          if(hitFaces[fid])
+        for (int fid = hitFaces.size() - 1; fid >= 0; fid--) {
+          if (hitFaces[fid])
             continue;
           //remove the row
           int numRows = FH.rows() - 1;
-          if(fid < numRows)
+          if (fid < numRows)
             FH.segment(fid, numRows - fid) = FH.segment(fid + 1, numRows - fid).eval();
           FH.conservativeResize(numRows);
           //update IDs
-          for(int k = 0; k < HF.rows(); k++)
-            if(HF(k) > fid)
+          for (int k = 0; k < HF.rows(); k++)
+            if (HF(k) > fid)
               HF(k)--;
+        }
+
+        //merge vertives
+        for(int k = 0; k < HV.rows(); k++)
+        {
+          for(int j = 0; j < HV.rows(); j++)
+          {
+            if(k == j)
+              continue;
+            if((currV.row(HV(j)) - currV.row(HV(k))).norm() < closeTolerance)
+            {
+              HV(j) = HV(k);
+            }
+          }
+        }
+
+        //removed unreferenced vertices
+        std::vector<int> hitVers(VH.rows(), 0);
+        for (int k = 0; k < HV.rows(); k++)
+          hitVers[HV(k)]++;
+
+        for (int vid = hitVers.size() - 1; vid >= 0; vid--) {
+          if (hitVers[vid])
+            continue;
+          //remove the row
+          int numRows = VH.rows() - 1;
+          if (vid < numRows)
+            VH.segment(vid, numRows - vid) = VH.segment(vid + 1, numRows - vid).eval();
+          VH.conservativeResize(numRows);
+          //update IDs
+          for (int k = 0; k < HV.rows(); k++)
+            if (HV(k) > vid)
+              HV(k)--;
         }
       }
 
@@ -550,10 +618,11 @@ namespace hedra
         std::vector<bool> isParamHE; // information if a given half-edge is from the parametrization
         std::vector<int> overlayFace2Triangle; // triangle face ID or -1 when a face is unbounded
 
+        std::vector<EPoint3D> HE3D;
+
         double minrange = (UV.colwise().maxCoeff() - UV.colwise().minCoeff()).minCoeff();
         // find the denominator for the  rational number representation
         int resolution = std::pow(10., std::ceil(std::log10(100000. / minrange)));
-
 
         if(F.cols() != 3)
           throw std::runtime_error("libhedra::generate_mesh: For now, it works only with triangular faces!");
@@ -677,6 +746,7 @@ namespace hedra
           nextH.conservativeResize(nextH.size() + currHalfedge);
           prevH.conservativeResize(prevH.size() + currHalfedge);
           twinH.conservativeResize(twinH.size() + currHalfedge);
+          HE3D.resize(currV.rows());
 
           // we use the CGAL data structure in order to update the libheadra Egien containers which represent the mesh
           for (Face_iterator fi = overlayArr.faces_begin(); fi != overlayArr.faces_end(); fi++)
@@ -732,6 +802,8 @@ namespace hedra
                */
               Eigen::RowVectorXd UV2 = UV.row(FUV(ti, (i + 1) % 3));
               Eigen::RowVectorXd UV3 = UV.row(FUV(ti, (i + 2) % 3));
+
+
               ETriangle2D t(vi->point(), paramCoord2texCoord(UV2, resolution), paramCoord2texCoord(UV3, resolution));
               BaryValues[i] = t.area();
               Sum += BaryValues[i];
@@ -750,6 +822,7 @@ namespace hedra
                                   );
               ENewPosition = ENewPosition + (vertexCoord - CGAL::ORIGIN) * BaryValues[i];
             }
+            HE3D[vi->data()] = ENewPosition;
             currV.row(vi->data()) = Eigen::RowVector3d(CGAL::to_double(ENewPosition.x()),
                                                        CGAL::to_double(ENewPosition.y()),
                                                        CGAL::to_double(ENewPosition.z()));
@@ -758,7 +831,7 @@ namespace hedra
 
         std::cout << "Stitching!" << std::endl;
         //mesh unification
-        stitch_boundaries(F, V, EF, innerEdges, currV, EV, VH, HV, HF, FH, nextH, prevH, twinH, isParamVertex, HE2origEdges, isParamHE, overlayFace2Triangle);
+        stitch_boundaries(HE3D, resolution, F, V, EF, innerEdges, currV, EV, VH, HV, HF, FH, nextH, prevH, twinH, isParamVertex, HE2origEdges, isParamHE, overlayFace2Triangle);
         std::cout << "Finalize!" << std::endl;
 
         //consolidation
