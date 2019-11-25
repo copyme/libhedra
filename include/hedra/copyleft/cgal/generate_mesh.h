@@ -164,6 +164,43 @@ namespace hedra
       }
 
 
+      // Input:
+
+      // UV           #V by 2, vertex coordinates in the parameter space
+      // FUV          #F by 3, map between faces' vertices and coordinates in the parameter space
+      // resolution   # rational number accuracy
+      // ti           # index of the current tirangle
+
+      // Output:
+
+      // paramArr     # square grid pattern in the CGAL representation
+      void square_grid_pattern(const Eigen::MatrixXd & UV, const Eigen::MatrixXi & FUV, const int resolution, const int ti, Arr_2 & paramArr)
+      {
+        //creating an arrangement of parameter lines
+        Eigen::MatrixXd facePC(3, UV.cols()); // PC.cols == 2
+        for (int i = 0; i < 3; i++)
+          facePC.row(i) = UV.row(FUV(ti, i));
+
+        for (int i = 0; i < facePC.cols(); i++)
+        {
+          //inserting unbounded lines
+          int coordMin = (int) std::floor(facePC.col(i).minCoeff() - 1.0);
+          int coordMax = (int) std::ceil(facePC.col(i).maxCoeff() + 1.0);
+          std::vector<Line2> lineCurves;
+          for (int coordIndex = coordMin; coordIndex <= coordMax; coordIndex++)
+          {
+            //The line coord = coordIndex
+            Eigen::RowVectorXd LineCoord1 = Eigen::RowVectorXd::Zero(facePC.cols());
+            Eigen::RowVectorXd LineCoord2 = Eigen::RowVectorXd::Ones(facePC.cols());
+            LineCoord1(i) = coordIndex;
+            LineCoord2(i) = coordIndex;
+            lineCurves.emplace_back(paramCoord2texCoord(LineCoord1, resolution), paramCoord2texCoord(LineCoord2, resolution));
+          }
+          insert(paramArr, lineCurves.begin(), lineCurves.end());
+        }
+      }
+
+
       // Connects disconnected pieces of the mesh
 
       // Input:
@@ -649,29 +686,9 @@ namespace hedra
               fi->data() = ti;
           }
 
-          //creating an arrangement of parameter lines
-          Eigen::MatrixXd facePC(3, UV.cols()); // PC.cols == 2
-          for (int i = 0; i < 3; i++)
-            facePC.row(i) = UV.row(FUV(ti, i));
-
-          // TODO: this part has to be adjusted for the hexes
-          for (int i = 0; i < facePC.cols(); i++)
-          {
-            //inserting unbounded lines
-            int coordMin = (int) std::floor(facePC.col(i).minCoeff() - 1.0);
-            int coordMax = (int) std::ceil(facePC.col(i).maxCoeff() + 1.0);
-            std::vector<Line2> lineCurves;
-            for (int coordIndex = coordMin; coordIndex <= coordMax; coordIndex++)
-            {
-              //The line coord = coordIndex
-              Eigen::RowVectorXd LineCoord1 = Eigen::RowVectorXd::Zero(facePC.cols());
-              Eigen::RowVectorXd LineCoord2 = Eigen::RowVectorXd::Ones(facePC.cols());
-              LineCoord1(i) = coordIndex;
-              LineCoord2(i) = coordIndex;
-              lineCurves.emplace_back(paramCoord2texCoord(LineCoord1, resolution), paramCoord2texCoord(LineCoord2, resolution));
-            }
-            insert(paramArr, lineCurves.begin(), lineCurves.end());
-          }
+          // generate a respective grid pattern
+          if (N == 4)
+            square_grid_pattern(UV, FUV, resolution, ti, paramArr);
 
           //Constructing the overlay arrangement
           Overlay_traits ot;
