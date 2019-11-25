@@ -187,7 +187,6 @@ namespace hedra
       IGL_INLINE void stitch_boundaries(
                                         std::vector<EPoint3D> & HE3D,
                                         int resolution,
-                                        const Eigen::MatrixXi & F,
                                         const Eigen::MatrixXd & V,
                                         const Eigen::MatrixXi & triEF,
                                         const Eigen::VectorXi & triInnerEdges,
@@ -229,13 +228,10 @@ namespace hedra
 
         //for every original inner edge, stitching up boundary (original boundary edges don't have any action item)
         for (int i = 0; i < triInnerEdges.size(); i++) {
-          std::cout << "I: " << i << std::endl;
           //first sorting to left and right edges according to faces
           int currEdge = triInnerEdges(i);
           int leftFace = triEF(currEdge, 1);
           int rightFace = triEF(currEdge, 0);
-
-          std::cout << leftFace << " right " << rightFace << std::endl;
 
           std::vector<int> leftHE, rightHE;
           for (size_t k = 0; k < origEdges2HE[currEdge].size(); k++) {
@@ -275,14 +271,14 @@ namespace hedra
 
           EPoint3D A = HE3D[HV(leftHE[0])];
           EPoint3D B = HE3D[HV(rightHE[0])];
+          // swap if the right is really left and vice versa
           if(CGAL::has_smaller_distance_to_point(ref, B, A))
           {
             for(size_t k = 0; k < leftHE.size(); k++)
               std::swap(leftHE[k], rightHE[k]);
           }
 
-          std::cout << leftHE.size() << " " << rightHE.size() << std::endl;
-
+          // garbage collector
           std::set<int> removedHE, removedV;
 
           //if the parameterization is seamless, left and right halfedges should be perfectly matched, but it's not always the case
@@ -291,15 +287,17 @@ namespace hedra
           assert(leftHE.size() == rightHE.size());
 
           for (size_t j = 0; j < leftHE.size(); j++) {
-
-
             if (!(isParamHE[leftHE[j]] && isParamHE[rightHE[j]])) {
               int ebegin = rightHE[j];
               int ecurr = ebegin;
+              int counter = 0;
               do {
-                //std::cout << "BEGIN: " << ebegin << " NEXT: " << ecurr << std::endl;
+                if (counter > 30)
+                  throw std::runtime_error("libhedra:stitch_boundaries: This should not happened!\n "
+                                           "Verify if your UV coordinates match at the cut and if so then report a bug at: https://github.com/avaxman/libhedra/issues");
                 HF(ecurr) = HF(leftHE[j]);
                 ecurr = nextH(ecurr);
+                counter++;
               } while (ebegin != ecurr);
             }
           }
@@ -311,15 +309,8 @@ namespace hedra
              */
             // remove the pair from the orphanage
             if (!isParamHE[leftHE[j]] && !isParamHE[rightHE[j]] && !isParamVertex[HV(leftHE[j])]) {
-              std::cout << "I" << std::endl;
-
-
               nextH(prevH(leftHE[j])) = nextH(nextH(rightHE[j]));
-
               prevH(nextH(nextH(rightHE[j]))) = prevH(leftHE[j]);
-
-              std::cout << twinH(nextH(rightHE[j])) << " " <<  twinH(prevH(leftHE[j])) << std::endl;
-
 
               nextH(twinH(nextH(rightHE[j]))) = nextH(twinH(prevH(leftHE[j])));
               prevH(nextH(twinH(prevH(leftHE[j])))) = twinH(nextH(rightHE[j]));
@@ -332,11 +323,9 @@ namespace hedra
               twinH(prevH(leftHE[j])) = twinH(nextH(rightHE[j]));
               twinH(twinH(nextH(rightHE[j]))) = prevH(leftHE[j]);
 
-
               // garbage collector
               removedHE.insert(leftHE[j]);
               removedHE.insert(rightHE[j]);
-
               removedV.insert(HV(leftHE[j]));
               removedV.insert(HV(nextH(rightHE[j])));
 
@@ -347,7 +336,6 @@ namespace hedra
               //rotated cross case
             else if (!isParamHE[leftHE[j]] && !isParamHE[rightHE[j]] && isParamVertex[HV(leftHE[j])]) {
 
-              std::cout << "II" << std::endl;
               // stitch f0
               nextH(prevH(leftHE[j])) = nextH(rightHE[j]);
               prevH(nextH(rightHE[j])) = prevH(leftHE[j]);
@@ -355,15 +343,19 @@ namespace hedra
               //garnage collector
               removedHE.insert(leftHE[j]);
               removedHE.insert(rightHE[j]);
-
               removedV.insert(HV(nextH(rightHE[j])));
 
               // update vertex
               int ebegin = rightHE[j];
               int ecurr = ebegin;
+              int counter = 0;
               do {
+                if (counter > 30)
+                  throw std::runtime_error("libhedra:stitch_boundaries: This should not happened!\n "
+                                           "Verify if your UV coordinates match at the cut and if so then report a bug at: https://github.com/avaxman/libhedra/issues");
                 HV(nextH(ecurr)) = HV(leftHE[j]);
                 ecurr = twinH(nextH(ecurr));
+                counter++;
               } while (twinH(nextH(ecurr)) != -1);
 
               // stitch f1
@@ -371,30 +363,27 @@ namespace hedra
               nextH(twinH(nextH(twinH(nextH(rightHE[j]))))) = twinH(prevH(twinH(prevH(leftHE[j]))));
 
             } else if (isParamHE[leftHE[j]] && isParamHE[rightHE[j]]) {
-
-              std::cout << "III" << std::endl;
               twinH(leftHE[j]) = rightHE[j];
               twinH(rightHE[j]) = leftHE[j];
               removedV.insert(HV(nextH(rightHE[j])));
               HV(nextH(rightHE[j])) = HV(leftHE[j]);
               HV(nextH(twinH(nextH(rightHE[j])))) = HV(leftHE[j]);
             }
+            else
+              throw std::runtime_error(
+                  "libhedra:stitch_boundaries: This should not happened! Report a bug at: https://github.com/avaxman/libhedra/issues");
           }
 
           // merge edge ends
           if (!isParamHE[leftHE[0]]) {
-
-            std::cout << "IV" << std::endl;
             nextH(prevH(leftHE[0])) = nextH(rightHE[0]); //
             prevH(nextH(rightHE[0])) = prevH(leftHE[0]);
             //garbage collector
             removedHE.insert(leftHE[0]);
             removedHE.insert(rightHE[0]);
-//            removedV.insert(HV(nextH(rightHE[0])));
             HV(nextH(rightHE[0])) = HV(leftHE[0]);
 
           } else if (isParamHE[leftHE[0]]) {
-            std::cout << "V" << std::endl;
             twinH(leftHE[0]) = rightHE[0];
             twinH(rightHE[0]) = leftHE[0];
             removedV.insert(HV(nextH(rightHE[0])));
@@ -406,16 +395,13 @@ namespace hedra
 
           int last = leftHE.size() - 1;
           if (!isParamHE[rightHE[last]]) {
-            std::cout << "VI" << std::endl;
             nextH(prevH(rightHE[last])) = nextH(leftHE[last]);
             prevH(nextH(leftHE[last])) = prevH(rightHE[last]);
             removedHE.insert(rightHE[last]);
             removedHE.insert(leftHE[last]);
 
-//            removedV.insert(HV(rightHE[last]));
             HV(rightHE[last]) = HV(nextH(leftHE[last]));
           } else if (isParamHE[rightHE[last]]) {
-            std::cout << "VII" << std::endl;
             twinH(leftHE[last]) = rightHE[last];
             twinH(rightHE[last]) = leftHE[last];
 
@@ -456,7 +442,6 @@ namespace hedra
             HE2origEdges.erase(HE2origEdges.cbegin() + (*he));
             isParamHE.erase(isParamHE.cbegin() + (*he));
 
-
             //update IDs
             for (int k = 0; k < FH.rows(); k++)
               if (FH(k) > *he)
@@ -466,26 +451,25 @@ namespace hedra
               if (VH(k) > *he)
                 VH(k)--;
               else if (VH(k) == *he && removedHE.find(*he) == removedHE.end())
-                std::cout << "bad ref VH!" << std::endl;
+                throw std::runtime_error("libhedra:stitch_boundaries: bad ref. VH! Report a bug at: https://github.com/avaxman/libhedra/issues");
 
             for (int k = 0; k < nextH.rows(); k++)
               if (nextH(k) > *he)
                 nextH(k)--;
               else if (nextH(k) == *he && removedHE.find(*he) == removedHE.end())
-                std::cout << "bad ref next! " << k << std::endl;
+                throw std::runtime_error("libhedra:stitch_boundaries: bad ref. nextH! Report a bug at: https://github.com/avaxman/libhedra/issues");
 
             for (int k = 0; k < prevH.rows(); k++)
               if (prevH(k) > *he)
                 prevH(k)--;
               else if (prevH(k) == *he && removedHE.find(*he) == removedHE.end())
-                std::cout << "bad ref prev !" << std::endl;
+                throw std::runtime_error("libhedra:stitch_boundaries: bad ref. prevH! Report a bug at: https://github.com/avaxman/libhedra/issues");
 
             for (int k = 0; k < twinH.rows(); k++)
               if (twinH(k) > *he)
                 twinH(k)--;
               else if (twinH(k) == *he && removedHE.find(*he) == removedHE.end())
-                std::cout << "bad ref twin!" << std::endl;
-
+                throw std::runtime_error("libhedra:stitch_boundaries: bad ref. twinH! Report a bug at: https://github.com/avaxman/libhedra/issues");
 
             for (size_t k = 0; k < origEdges2HE.size(); k++) {
               auto it = std::find(origEdges2HE[k].begin(), origEdges2HE[k].end(), *he);
@@ -832,10 +816,8 @@ namespace hedra
           }
         }
 
-        std::cout << "Stitching!" << std::endl;
         //mesh unification
-        stitch_boundaries(HE3D, resolution, F, V, EF, innerEdges, currV, EV, VH, HV, HF, FH, nextH, prevH, twinH, isParamVertex, HE2origEdges, isParamHE, overlayFace2Triangle);
-        std::cout << "Finalize!" << std::endl;
+        stitch_boundaries(HE3D, resolution, V, EF, innerEdges, currV, EV, VH, HV, HF, FH, nextH, prevH, twinH, isParamVertex, HE2origEdges, isParamHE, overlayFace2Triangle);
 
         //consolidation
         newV = currV;
