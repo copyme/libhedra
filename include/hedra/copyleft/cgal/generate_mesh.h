@@ -200,6 +200,33 @@ namespace hedra
         }
       }
 
+      // the signature is the same as for the suare grid pattern function
+      void tri_grid_pattern(const Eigen::MatrixXd & UV, const Eigen::MatrixXi & FUV, const int resolution, const int ti, Arr_2 & paramArr)
+      {
+        //creating an arrangement of parameter lines
+        Eigen::MatrixXd facePC(3, UV.cols()); // PC.cols == 2
+        for (int i = 0; i < 3; i++)
+          facePC.row(i) = UV.row(FUV(ti, i));
+
+        for (int i = 0; i < facePC.cols(); i++)
+        {
+          //inserting unbounded lines
+          int coordMin = (int) std::floor(facePC.col(i).minCoeff() - 1.0);
+          int coordMax = (int) std::ceil(facePC.col(i).maxCoeff() + 1.0);
+          std::vector<Line2> lineCurves;
+          for (int coordIndex = coordMin; coordIndex <= coordMax; coordIndex++)
+          {
+            //The line coord = coordIndex
+            Eigen::RowVectorXd LineCoord1 = Eigen::RowVectorXd::Zero(facePC.cols());
+            Eigen::RowVectorXd LineCoord2 = Eigen::RowVectorXd::Ones(facePC.cols());
+            LineCoord1(i) = coordIndex;
+            LineCoord2(i) = coordIndex;
+            lineCurves.emplace_back(paramCoord2texCoord(LineCoord1, resolution), paramCoord2texCoord(LineCoord2, resolution));
+          }
+          insert(paramArr, lineCurves.begin(), lineCurves.end());
+        }
+      }
+
 
       // Connects disconnected pieces of the mesh
 
@@ -321,7 +348,9 @@ namespace hedra
           //if the parameterization is seamless, left and right halfedges should be perfectly matched, but it's not always the case
           // first updated edge to face map for faces which are going to be removed
 
-          assert(leftHE.size() == rightHE.size());
+          if (leftHE.size() != rightHE.size())
+            throw std::runtime_error("libhedra:stitch_boundaries: This should not happened!\n "
+                                     "Verify if your UV coordinates match at the cut and if so then report a bug at: https://github.com/avaxman/libhedra/issues");
 
           for (size_t j = 0; j < leftHE.size(); j++) {
             if (!(isParamHE[leftHE[j]] && isParamHE[rightHE[j]])) {
@@ -689,6 +718,10 @@ namespace hedra
           // generate a respective grid pattern
           if (N == 4)
             square_grid_pattern(UV, FUV, resolution, ti, paramArr);
+          else if (N == 6)
+            tri_grid_pattern(UV, FUV, resolution, ti, paramArr);
+          else
+            throw std::runtime_error("libhedra::generate_mesh: Only the square and hexagonal grids are supported!");
 
           //Constructing the overlay arrangement
           Overlay_traits ot;
