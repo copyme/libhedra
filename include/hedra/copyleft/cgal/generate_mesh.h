@@ -19,7 +19,6 @@
 #include <CGAL/Exact_predicates_inexact_constructions_kernel.h>
 #include <CGAL/Exact_predicates_exact_constructions_kernel.h>
 #include <CGAL/Simple_cartesian.h>
-#include <CGAL/Cartesian.h>
 #include <CGAL/Polyhedron_3.h>
 #include <CGAL/Arr_linear_traits_2.h>
 #include <CGAL/Arrangement_2.h>
@@ -187,6 +186,7 @@ namespace hedra
           int coordMin = (int) std::floor(facePC.col(i).minCoeff() - 1.0);
           int coordMax = (int) std::ceil(facePC.col(i).maxCoeff() + 1.0);
           std::vector<Line2> lineCurves;
+
           for (int coordIndex = coordMin; coordIndex <= coordMax; coordIndex++)
           {
             //The line coord = coordIndex
@@ -204,27 +204,65 @@ namespace hedra
       void tri_grid_pattern(const Eigen::MatrixXd & UV, const Eigen::MatrixXi & FUV, const int resolution, const int ti, Arr_2 & paramArr)
       {
         //creating an arrangement of parameter lines
-        Eigen::MatrixXd facePC(3, UV.cols()); // PC.cols == 2
-        for (int i = 0; i < 3; i++)
-          facePC.row(i) = UV.row(FUV(ti, i));
+        // try to round on the grid
 
-        for (int i = 0; i < facePC.cols(); i++)
-        {
-          //inserting unbounded lines
-          int coordMin = (int) std::floor(facePC.col(i).minCoeff() - 1.0);
-          int coordMax = (int) std::ceil(facePC.col(i).maxCoeff() + 1.0);
+        Eigen::Matrix2d cH;
+        cH << std::sqrt(3.), -std::sqrt(3.) / 2., 0., -3. / 2.;
+
+        Eigen::MatrixXd facePC(3, UV.cols()); // PC.cols == 2
+        for (int i = 0; i < 3; i++) {
+          facePC.row(i) = cH.inverse() * UV.row(FUV(ti, i)).transpose(); // back to the axial coordinates
+          // round in the cube coordinates
+
+            Eigen::Vector3d cube(facePC(i, 0), -facePC(i, 1), -facePC(i, 0) + facePC(i, 1));
+            Eigen::Vector3d cubeR(std::round(facePC(i, 0)), std::round(facePC(i, 1)), std::round(-facePC(i, 0) + facePC(i, 1)));
+            Eigen::Vector3d diff(std::fabs(cubeR(0) - cube(0)), std::fabs(cubeR(1) - cube(1)), std::fabs(cubeR(2) - cube(2)));
+
+            if(diff(0) > diff(1) && diff(0) > diff(2))
+            {
+              facePC(i, 0) = (cubeR(1) - cubeR(2));
+              facePC(i, 1) = cubeR(1);
+            }
+            else if (diff(1) > diff(2))
+            {
+              facePC(i, 0) = cubeR(0);
+              facePC(i, 1) = (cubeR(0) + cubeR(2));
+            }
+            else
+            {
+              facePC(i, 0) = cubeR(0);
+              facePC(i, 1) = cubeR(1);
+            }
+            facePC.row(i) = cH * facePC.row(i).eval().transpose();
+          }
+
+          //inserting unbounded lines -- vertical
+          double coordMin = (facePC.col(0).minCoeff() - sqrt(3.));
+          double coordMax = (facePC.col(0).maxCoeff() + sqrt(3.));
           std::vector<Line2> lineCurves;
-          for (int coordIndex = coordMin; coordIndex <= coordMax; coordIndex++)
-          {
+          for (double coordIndex = coordMin; coordIndex < coordMax + 1e-6; coordIndex += sqrt(3.) / 4.) {
             //The line coord = coordIndex
-            Eigen::RowVectorXd LineCoord1 = Eigen::RowVectorXd::Zero(facePC.cols());
-            Eigen::RowVectorXd LineCoord2 = Eigen::RowVectorXd::Ones(facePC.cols());
-            LineCoord1(i) = coordIndex;
-            LineCoord2(i) = coordIndex;
+            Eigen::Vector2d LineCoord1(coordIndex, 0);
+            Eigen::Vector2d LineCoord2(coordIndex, 1);
             lineCurves.emplace_back(paramCoord2texCoord(LineCoord1, resolution), paramCoord2texCoord(LineCoord2, resolution));
           }
-          insert(paramArr, lineCurves.begin(), lineCurves.end());
+
+        Eigen::Matrix2d rot;
+        rot << std::cos(M_PI / 3.), -std::sin(M_PI / 3.), std::sin(M_PI / 3.), std::cos(M_PI / 3.);
+
+        coordMin = facePC.col(1).minCoeff() - std::max(std::round(facePC.col(1).maxCoeff() - facePC.col(1).minCoeff()), std::round(facePC.col(0).maxCoeff() - facePC.col(0).minCoeff()));
+        coordMax = facePC.col(1).maxCoeff() + std::max(std::round(facePC.col(1).maxCoeff() - facePC.col(1).minCoeff()), std::round(facePC.col(0).maxCoeff() - facePC.col(0).minCoeff()));
+        for (double coordIndex = coordMin; coordIndex < coordMax + 1e-6; coordIndex += 1./2. ) {
+          //The line coord = coordIndex
+          Eigen::Vector2d LineCoord1 = Eigen::Vector2d(0, 0) + Eigen::Vector2d(facePC.col(0).maxCoeff(), coordIndex);
+          Eigen::Vector2d LineCoord2 = Eigen::Vector2d(sqrt(3.) / 2., 1/2.) + Eigen::Vector2d(facePC.col(0).maxCoeff(), coordIndex);
+          lineCurves.emplace_back(paramCoord2texCoord(LineCoord1, resolution), paramCoord2texCoord(LineCoord2, resolution));
+
+          LineCoord1 = Eigen::Vector2d(0, 0) + Eigen::Vector2d(facePC.col(0).maxCoeff(), coordIndex);
+          LineCoord2 = Eigen::Vector2d(-sqrt(3.) / 2., 1/2.) + Eigen::Vector2d(facePC.col(0).maxCoeff(), coordIndex);
+          lineCurves.emplace_back(paramCoord2texCoord(LineCoord1, resolution), paramCoord2texCoord(LineCoord2, resolution));
         }
+        insert(paramArr, lineCurves.begin(), lineCurves.end());
       }
 
 
@@ -686,6 +724,8 @@ namespace hedra
         {
           Arr_2 paramArr, triangleArr, overlayArr;
 
+          std::cout << "Triangle: " << ti << std::endl;
+
           /* for all vertices of each face take UVs
            * and add edges of the face to the arrangment
            */
@@ -867,7 +907,7 @@ namespace hedra
         }
 
         //mesh unification
-        stitch_boundaries(HE3D, resolution, V, EF, innerEdges, currV, EV, VH, HV, HF, FH, nextH, prevH, twinH, isParamVertex, HE2origEdges, isParamHE, overlayFace2Triangle);
+        //stitch_boundaries(HE3D, resolution, V, EF, innerEdges, currV, EV, VH, HV, HF, FH, nextH, prevH, twinH, isParamVertex, HE2origEdges, isParamHE, overlayFace2Triangle);
 
         //consolidation
         newV = currV;
