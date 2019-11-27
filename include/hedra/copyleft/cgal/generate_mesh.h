@@ -267,158 +267,55 @@ namespace hedra
 
 
       void merge_edges_left(
-          const int idx,
+          const int idx0,
+          const int idx1,
           std::vector<int> &leftHE,
           Eigen::VectorXi &HV,
           Eigen::VectorXi &HF,
           Eigen::VectorXi &nextH,
           Eigen::VectorXi &prevH,
           Eigen::VectorXi &twinH) {
-
         std::set<int> removedHE, removedV;
-        if (idx < leftHE.size() - 1 && idx > 0) {
 
-          std::cout << "first " << std::endl;
+        // merge idx1 to idx0
+        //find edges to be removed
 
-          removedV.insert(HV(leftHE[idx + 1]));
-          HV(leftHE[idx + 1]) = HV(leftHE[idx]);
-
-          // merge everything down the removed face
-          //find next face that does not touch the removed face
-          int ebegin = nextH(leftHE[idx - 1]);
-          int ecurr = ebegin;
-          int counter = 0;
-          do {
-            if (counter > 30)
-              throw std::runtime_error("libhedra:stitch_boundaries: This should not happened!\n "
-                                       "Verify if your UV coordinates match at the cut and if so then report a bug at: https://github.com/avaxman/libhedra/issues");
-            if(twinH(ecurr) == -1 || (HF(twinH(ecurr)) != HF(leftHE[idx])))
-              break;
-            else
-              removedHE.insert(ecurr);
-            ecurr = nextH(ecurr);
-            counter++;
-          } while (ebegin != ecurr);
-          nextH(leftHE[idx - 1]) = ecurr;
-          prevH(ecurr) = leftHE[idx - 1];
-          removedV.insert(HV(ecurr));
-          HV(ecurr) = HV(leftHE[idx]);
-
-          //do the same for the above face
-          ebegin = prevH(leftHE[idx + 1]);
-          ecurr = ebegin;
-          counter = 0;
-          do {
-            if (counter > 30)
-              throw std::runtime_error("libhedra:stitch_boundaries: This should not happened!\n "
-                                       "Verify if your UV coordinates match at the cut and if so then report a bug at: https://github.com/avaxman/libhedra/issues");
-            if(twinH(ecurr) == -1 || (HF(twinH(ecurr)) != HF(leftHE[idx])))
-              break;
-            else
-              removedHE.insert(ecurr);
-            ecurr = prevH(ecurr);
-            counter++;
-          } while (ebegin != ecurr);
-          prevH(leftHE[idx + 1]) = ecurr;
-          nextH(ecurr) = leftHE[idx + 1];
-
-          //clean up
-          ebegin = leftHE[idx];
-          ecurr = ebegin;
-          counter = 0;
-          do {
-            if (counter > 30)
-              throw std::runtime_error("libhedra:stitch_boundaries: This should not happened!\n "
-                                       "Verify if your UV coordinates match at the cut and if so then report a bug at: https://github.com/avaxman/libhedra/issues");
-            removedHE.insert(ecurr);
-            ecurr = nextH(ecurr);
-            counter++;
-          } while (ebegin != ecurr);
-
-          leftHE.erase(leftHE.begin() + idx);
-        } else if (idx == 0) {
-          std::cout << "second " << std::endl;
-
-          removedV.insert(HV(leftHE[idx + 1]));
-          HV(leftHE[idx + 1]) = HV(leftHE[idx]);
-
-          // find a prev to merge with
-          int ebegin = prevH(leftHE[idx + 1]);
-          int ecurr = ebegin;
-          int counter = 0;
-          do {
-            if (counter > 30)
-              throw std::runtime_error("libhedra:stitch_boundaries: This should not happened!\n "
-                                       "Verify if your UV coordinates match at the cut and if so then report a bug at: https://github.com/avaxman/libhedra/issues");
-            if(twinH(ecurr) == -1 || (HF(twinH(ecurr)) != HF(leftHE[idx])))
-              break;
-            else
-              removedHE.insert(ecurr);
-            ecurr = prevH(ecurr);
-            counter++;
-          } while (ebegin != ecurr);
-          prevH(leftHE[idx + 1]) = ecurr;
-          nextH(ecurr) = leftHE[idx + 1];
-
-          // clean up
-          ebegin = leftHE[idx];
-          ecurr = ebegin;
-          counter = 0;
-          do {
-            if (counter > 30)
-              throw std::runtime_error("libhedra:stitch_boundaries: This should not happened!\n "
-                                       "Verify if your UV coordinates match at the cut and if so then report a bug at: https://github.com/avaxman/libhedra/issues");
-            removedHE.insert(ecurr);
-            ecurr = nextH(ecurr);
-            counter++;
-          } while (ebegin != ecurr);
-
-          leftHE.erase(leftHE.begin());
-        } else if (idx == leftHE.size() - 1) {
-          std::cout << "third " << std::endl;
-
-          removedV.insert(HV(leftHE[idx]));
-
-          // merge everything down the removed face
-          //find next face that does not touch the removed face
-          int ebegin = nextH(leftHE[idx - 1]);
-          int ecurr = ebegin;
-          int counter = 0;
-          do {
-            if (counter > 30)
-              throw std::runtime_error("libhedra:stitch_boundaries: This should not happened!\n "
-                                       "Verify if your UV coordinates match at the cut and if so then report a bug at: https://github.com/avaxman/libhedra/issues");
-            if(twinH(ecurr) == -1 || (HF(twinH(ecurr)) != HF(leftHE[idx])))
-              break;
-            else
-              removedHE.insert(ecurr);
-            ecurr = nextH(ecurr);
-            counter++;
-          } while (ebegin != ecurr);
-          nextH(leftHE[idx - 1]) = ecurr;
-          prevH(ecurr) = leftHE[idx - 1];
-          removedV.insert(HV(ecurr));
-          HV(ecurr) = HV(nextH(leftHE[idx]));
-
-          ebegin = leftHE[idx];
-          ecurr = ebegin;
-          counter = 0;
-          do {
-            if (counter > 30)
-              throw std::runtime_error("libhedra:stitch_boundaries: This should not happened!\n "
-                                       "Verify if your UV coordinates match at the cut and if so then report a bug at: https://github.com/avaxman/libhedra/issues");
-            removedHE.insert(ecurr);
-            ecurr = nextH(ecurr);
-            counter++;
-          } while (ebegin != ecurr);
-
-          leftHE.erase(leftHE.begin() + idx);
+        int lastC = nextH(leftHE[idx0]);
+        int f = prevH(leftHE[idx1]);
+        while(twinH(lastC) != -1 && twinH(lastC) == f)
+        {
+          lastC = nextH(lastC);
+          f = prevH(f);
         }
+
+        int ebegin = leftHE[idx1];
+        int ecurr = ebegin;
+        int counter = 0;
+
+        //connect the chain
+        //change connections
+        nextH(leftHE[idx0]) = nextH(leftHE[idx1]);
+        prevH(nextH(leftHE[idx1])) = leftHE[idx0];
+        prevH(nextH(lastC)) = prevH(twinH(lastC));
+        nextH(prevH(twinH(lastC))) = nextH(lastC);
+
+        // fix the face assosiation
+        ebegin = leftHE[idx0];
+        ecurr = ebegin;
+        counter = 0;
+        do {
+          if (counter > 30)
+            throw std::runtime_error("libhedra:stitch_boundaries: This should not happened!\n "
+                                     "Verify if your UV coordinates match at the cut and if so then report a bug at: https://github.com/avaxman/libhedra/issues");
+          HF(ecurr) = HF(leftHE[idx0]);
+          ecurr = nextH(ecurr);
+          counter++;
+        } while (ebegin != ecurr);
       }
 
 
-    bool edge_reduction(std::vector<int> & leftHE,
-                        std::vector<int> & rightHE,
+      bool edge_reduction(std::vector<int> & leftHE,
+                          std::vector<int> & rightHE,
                         Eigen::MatrixXd & currV,
                         Eigen::VectorXi & HV,
                         Eigen::VectorXi & HF,
@@ -450,7 +347,12 @@ namespace hedra
           typedef std::multimap<int, int>::iterator MMAPIterator;
           std::pair<MMAPIterator, MMAPIterator> result = right2left.equal_range(j);
           if(std::distance(result.first, result.second) > 1) {
-            merge_edges_left(result.first->second, leftHE, HV, HF, nextH, prevH, twinH);
+            int idx0, idx1;
+            auto it = result.first;
+            idx0 = it->second;
+            std::advance(it, 1);
+            idx1 = it->second;
+            merge_edges_left(idx0, idx1, leftHE, HV, HF, nextH, prevH, twinH);
             status = true;
           }
         }
