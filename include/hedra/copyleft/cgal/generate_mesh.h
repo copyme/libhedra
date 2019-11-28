@@ -274,30 +274,41 @@ namespace hedra
           Eigen::VectorXi &HF,
           Eigen::VectorXi &nextH,
           Eigen::VectorXi &prevH,
-          Eigen::VectorXi &twinH) {
-        std::set<int> removedHE, removedV;
+          Eigen::VectorXi &twinH,
+          std::set<int> & removedHE,
+          std::set<int> & removedV) {
 
         // merge idx1 to idx0
         //find edges to be removed
 
-        int lastC = nextH(leftHE[idx0]);
-        int f = prevH(leftHE[idx1]);
-        while(twinH(lastC) != -1 && twinH(lastC) == f)
-        {
-          lastC = nextH(lastC);
-          f = prevH(f);
-        }
+        std::cout << idx0 << " " << idx1 << std::endl;
 
-        int ebegin = leftHE[idx1];
+        int ebegin = leftHE[idx0];
         int ecurr = ebegin;
         int counter = 0;
+        std::vector<int> commonHE;
+        do {
+          if (counter > 30)
+            throw std::runtime_error("libhedra:stitch_boundaries: This should not happened!\n "
+                                     "Verify if your UV coordinates match at the cut and if so then report a bug at: https://github.com/avaxman/libhedra/issues");
+          if(twinH(ecurr) != -1 && HF(twinH(ecurr)) == HF(leftHE[idx1])) {
+            commonHE.push_back(ecurr);
+            removedHE.insert(ecurr);
+            removedHE.insert(twinH(ecurr));
+          }
+          ecurr = nextH(ecurr);
+          counter++;
+        } while (ebegin != ecurr);
+
+        std::cout << commonHE.size() << std::endl;
 
         //connect the chain
         //change connections
         nextH(leftHE[idx0]) = nextH(leftHE[idx1]);
         prevH(nextH(leftHE[idx1])) = leftHE[idx0];
-        prevH(nextH(lastC)) = prevH(twinH(lastC));
-        nextH(prevH(twinH(lastC))) = nextH(lastC);
+
+        prevH(nextH(commonHE.back())) = prevH(twinH(commonHE.back()));
+        nextH(prevH(twinH(commonHE.back()))) = nextH(commonHE.back());
 
         // fix the face assosiation
         ebegin = leftHE[idx0];
@@ -311,6 +322,9 @@ namespace hedra
           ecurr = nextH(ecurr);
           counter++;
         } while (ebegin != ecurr);
+        leftHE.erase(leftHE.begin() + idx1);
+        removedHE.insert(leftHE[idx1]);
+        removedV.insert(HV(leftHE[idx1]));
       }
 
 
@@ -322,6 +336,8 @@ namespace hedra
                         Eigen::VectorXi & nextH,
                         Eigen::VectorXi & prevH,
                         Eigen::VectorXi & twinH,
+                        std::set<int> & removedHE,
+                        std::set<int> & removedV,
                         const double closeTolerance = 10e-30)
     {
         bool status = false;
@@ -352,7 +368,7 @@ namespace hedra
             idx0 = it->second;
             std::advance(it, 1);
             idx1 = it->second;
-            merge_edges_left(idx0, idx1, leftHE, HV, HF, nextH, prevH, twinH);
+            merge_edges_left(idx0, idx1, leftHE, HV, HF, nextH, prevH, twinH, removedHE, removedV);
             status = true;
           }
         }
@@ -484,9 +500,10 @@ namespace hedra
 
           if(leftHE.size() > rightHE.size()) {
             std::cout << leftHE.size() << " before " << rightHE.size() << " l " << leftFace << " r " << rightFace  << std::endl;
-            while (edge_reduction(leftHE, rightHE, currV, HV, HF, nextH, prevH, twinH, closeTolerance));
+            edge_reduction(leftHE, rightHE, currV, HV, HF, nextH, prevH, twinH, removedHE, removedV, closeTolerance);
             std::cout << leftHE.size() << " after " << rightHE.size() << std::endl;
           }
+
 
           for (size_t j = 0; j < leftHE.size(); j++) {
             if (!(isParamHE[leftHE[j]] && isParamHE[rightHE[j]])) {
