@@ -28,6 +28,7 @@
 #include <hedra/copyleft/cgal/basic_cgal_definitions.h>
 #include <hedra/dcel.h>
 
+#include <CGAL/Exact_rational.h>
 
 namespace hedra
 {
@@ -173,32 +174,32 @@ namespace hedra
       // Output:
 
       // paramArr     # square grid pattern in the CGAL representation
-      void square_grid_pattern(const Eigen::MatrixXd & UV, const Eigen::MatrixXi & FUV, const int resolution, const int ti, Arr_2 & paramArr)
-      {
-        //creating an arrangement of parameter lines
-        Eigen::MatrixXd facePC(3, UV.cols()); // PC.cols == 2
-        for (int i = 0; i < 3; i++)
-          facePC.row(i) = UV.row(FUV(ti, i));
-
-        for (int i = 0; i < facePC.cols(); i++)
-        {
-          //inserting unbounded lines
-          int coordMin = (int) std::floor(facePC.col(i).minCoeff() - 1.0);
-          int coordMax = (int) std::ceil(facePC.col(i).maxCoeff() + 1.0);
-          std::vector<Line2> lineCurves;
-
-          for (int coordIndex = coordMin; coordIndex <= coordMax; coordIndex++)
-          {
-            //The line coord = coordIndex
-            Eigen::RowVectorXd LineCoord1 = Eigen::RowVectorXd::Zero(facePC.cols());
-            Eigen::RowVectorXd LineCoord2 = Eigen::RowVectorXd::Ones(facePC.cols());
-            LineCoord1(i) = coordIndex;
-            LineCoord2(i) = coordIndex;
-            lineCurves.emplace_back(paramCoord2texCoord(LineCoord1, resolution), paramCoord2texCoord(LineCoord2, resolution));
-          }
-          insert(paramArr, lineCurves.begin(), lineCurves.end());
-        }
-      }
+//      void square_grid_pattern(const Eigen::MatrixXd & UV, const Eigen::MatrixXi & FUV, const int resolution, const int ti, Arr_2 & paramArr)
+//      {
+//        //creating an arrangement of parameter lines
+//        Eigen::MatrixXd facePC(3, UV.cols()); // PC.cols == 2
+//        for (int i = 0; i < 3; i++)
+//          facePC.row(i) = UV.row(FUV(ti, i));
+//
+//        for (int i = 0; i < facePC.cols(); i++)
+//        {
+//          //inserting unbounded lines
+//          int coordMin = (int) std::floor(facePC.col(i).minCoeff() - 1.0);
+//          int coordMax = (int) std::ceil(facePC.col(i).maxCoeff() + 1.0);
+//          std::vector<Line2> lineCurves;
+//
+//          for (int coordIndex = coordMin; coordIndex <= coordMax; coordIndex++)
+//          {
+//            //The line coord = coordIndex
+//            Eigen::RowVectorXd LineCoord1 = Eigen::RowVectorXd::Zero(facePC.cols());
+//            Eigen::RowVectorXd LineCoord2 = Eigen::RowVectorXd::Ones(facePC.cols());
+//            LineCoord1(i) = coordIndex;
+//            LineCoord2(i) = coordIndex;
+//            lineCurves.emplace_back(paramCoord2texCoord(LineCoord1, resolution), paramCoord2texCoord(LineCoord2, resolution));
+//          }
+//          insert(paramArr, lineCurves.begin(), lineCurves.end());
+//        }
+//      }
 
       // the signature is the same as for the suare grid pattern function
       void tri_grid_pattern(const Eigen::MatrixXd & UV, const Eigen::MatrixXi & FUV, const int resolution, const int ti, Arr_2 & paramArr)
@@ -236,6 +237,8 @@ namespace hedra
             facePC.row(i) = cH * facePC.row(i).eval().transpose();
           }
 
+        CoordNT sqrt_15 = CoordNT(0, 1, 15);
+
           //inserting unbounded lines -- vertical
           double coordMin = (facePC.col(0).minCoeff() - sqrt(3.));
           double coordMax = (facePC.col(0).maxCoeff() + sqrt(3.));
@@ -246,9 +249,6 @@ namespace hedra
             Eigen::Vector2d LineCoord2(coordIndex, 1);
             lineCurves.emplace_back(paramCoord2texCoord(LineCoord1, resolution), paramCoord2texCoord(LineCoord2, resolution));
           }
-
-        Eigen::Matrix2d rot;
-        rot << std::cos(M_PI / 3.), -std::sin(M_PI / 3.), std::sin(M_PI / 3.), std::cos(M_PI / 3.);
 
         coordMin = facePC.col(1).minCoeff() - std::max(std::round(facePC.col(1).maxCoeff() - facePC.col(1).minCoeff()), std::round(facePC.col(0).maxCoeff() - facePC.col(0).minCoeff()));
         coordMax = facePC.col(1).maxCoeff() + std::max(std::round(facePC.col(1).maxCoeff() - facePC.col(1).minCoeff()), std::round(facePC.col(0).maxCoeff() - facePC.col(0).minCoeff()));
@@ -267,114 +267,155 @@ namespace hedra
 
 
       void merge_edges_left(
-          const int idx0,
-          const int idx1,
+          const int idx,
           std::vector<int> &leftHE,
           Eigen::VectorXi &HV,
           Eigen::VectorXi &HF,
+          Eigen::VectorXi & FH,
           Eigen::VectorXi &nextH,
           Eigen::VectorXi &prevH,
           Eigen::VectorXi &twinH,
           std::set<int> & removedHE,
           std::set<int> & removedV) {
 
-        // merge idx1 to idx0
-        //find edges to be removed
+        prevH(nextH(leftHE[idx])) = prevH(leftHE[idx]);
+        nextH(prevH(leftHE[idx])) = nextH(leftHE[idx]);
+        HV(twinH(prevH(leftHE[idx]))) = HV(nextH(leftHE[idx]));
+        removedHE.insert(leftHE[idx]);
+        removedV.insert(HV(leftHE[idx]));
+        FH(HF(leftHE[idx])) = nextH(leftHE[idx]);
 
-        std::cout << idx0 << " " << idx1 << std::endl;
-
-        int ebegin = leftHE[idx0];
-        int ecurr = ebegin;
-        int counter = 0;
-        std::vector<int> commonHE;
-        do {
-          if (counter > 30)
-            throw std::runtime_error("libhedra:stitch_boundaries: This should not happened!\n "
-                                     "Verify if your UV coordinates match at the cut and if so then report a bug at: https://github.com/avaxman/libhedra/issues");
-          if(twinH(ecurr) != -1 && HF(twinH(ecurr)) == HF(leftHE[idx1])) {
-            commonHE.push_back(ecurr);
-            removedHE.insert(ecurr);
-            removedHE.insert(twinH(ecurr));
-          }
-          ecurr = nextH(ecurr);
-          counter++;
-        } while (ebegin != ecurr);
-
-        std::cout << commonHE.size() << std::endl;
-
-        //connect the chain
-        //change connections
-        nextH(leftHE[idx0]) = nextH(leftHE[idx1]);
-        prevH(nextH(leftHE[idx1])) = leftHE[idx0];
-
-        prevH(nextH(commonHE.back())) = prevH(twinH(commonHE.back()));
-        nextH(prevH(twinH(commonHE.back()))) = nextH(commonHE.back());
-
-        // fix the face assosiation
-        ebegin = leftHE[idx0];
-        ecurr = ebegin;
-        counter = 0;
-        do {
-          if (counter > 30)
-            throw std::runtime_error("libhedra:stitch_boundaries: This should not happened!\n "
-                                     "Verify if your UV coordinates match at the cut and if so then report a bug at: https://github.com/avaxman/libhedra/issues");
-          HF(ecurr) = HF(leftHE[idx0]);
-          ecurr = nextH(ecurr);
-          counter++;
-        } while (ebegin != ecurr);
-        leftHE.erase(leftHE.begin() + idx1);
-        removedHE.insert(leftHE[idx1]);
-        removedV.insert(HV(leftHE[idx1]));
+        leftHE.erase(leftHE.begin() + idx);
       }
 
+      void kill_triangle_left(
+          const int idx,
+          std::vector<int> &leftHE,
+          Eigen::VectorXi &HV,
+          Eigen::VectorXi & HF,
+          Eigen::VectorXi & FH,
+          Eigen::VectorXi &nextH,
+          Eigen::VectorXi &prevH,
+          Eigen::VectorXi &twinH,
+          std::set<int> & removedHE,
+          std::set<int> & removedV) {
+
+        //removed tri edges
+        removedHE.insert(leftHE[idx]);
+        removedHE.insert(nextH(leftHE[idx]));
+        removedHE.insert(prevH(leftHE[idx]));
+
+        // simplify bottom
+        if (twinH(prevH(leftHE[idx])) != -1)
+        {
+          prevH(nextH(twinH(prevH(leftHE[idx])))) =  prevH(twinH(prevH(leftHE[idx])));
+          nextH(prevH(twinH(prevH(leftHE[idx])))) = nextH(twinH(prevH(leftHE[idx])));
+
+          removedV.insert(HV(nextH(twinH(prevH(leftHE[idx])))));
+          HV(nextH(twinH(prevH(leftHE[idx])))) = HV(nextH(leftHE[idx]));
+
+          removedHE.insert(twinH(prevH(leftHE[idx])));
+          FH(HF(twinH(prevH(leftHE[idx])))) = nextH(twinH(prevH(leftHE[idx])));
+        }
+
+        // top
+        if(twinH(nextH(leftHE[idx])) != -1)
+        {
+          nextH(prevH(twinH(nextH(leftHE[idx])))) = nextH(twinH(nextH(leftHE[idx])));
+          prevH(nextH(twinH(nextH(leftHE[idx])))) = prevH(twinH(nextH(leftHE[idx])));
+
+          removedV.insert(HV(nextH(twinH(nextH(leftHE[idx])))));
+          HV(nextH(twinH(nextH(leftHE[idx])))) = HV(leftHE[idx]);
+
+          removedHE.insert(twinH(nextH(leftHE[idx])));
+          FH(HF(twinH(nextH(leftHE[idx])))) = nextH(twinH(nextH(leftHE[idx])));
+        }
+        leftHE.erase(leftHE.begin() + idx);
+      }
 
       bool edge_reduction(std::vector<int> & leftHE,
                           std::vector<int> & rightHE,
                         Eigen::MatrixXd & currV,
                         Eigen::VectorXi & HV,
                         Eigen::VectorXi & HF,
-                        Eigen::VectorXi & nextH,
+                          Eigen::VectorXi & FH,
+                          Eigen::VectorXi & nextH,
                         Eigen::VectorXi & prevH,
                         Eigen::VectorXi & twinH,
                         std::set<int> & removedHE,
                         std::set<int> & removedV,
-                        const double closeTolerance = 10e-30)
-    {
+                        const double closeTolerance = 10e-30) {
         bool status = false;
-      // we need to merge some edges
-      if(leftHE.size() > rightHE.size())
-      {
-        for (int j = 0; j < rightHE.size(); j++)
-        {
-          std::multimap<int, int> right2left;
-          Eigen::Vector3d M = currV.row(HV(nextH(rightHE[j]))) - currV.row(HV(rightHE[j]));
-          Eigen::Vector3d B = currV.row(HV(rightHE[j]));
 
-          for(int k = 0; k < leftHE.size(); k++)
-          {
-            Eigen::Vector3d N = (currV.row(HV(nextH(leftHE[k]))) - currV.row(HV(leftHE[k]))) * 0.5;
-            // take middle point to avoid mismachings
-            Eigen::Vector3d P = currV.row(HV(leftHE[k])).transpose() + N;
-            double t = M.dot((P - B)) / (M.dot(M));
-            if (t > closeTolerance && t < 1. - closeTolerance)
-              right2left.insert({j, k});
+        // we need to merge some edges
+        if (leftHE.size() > rightHE.size()) {
+
+          for(int j = 0; j < leftHE.size(); j++) {
+            int ebegin = leftHE[j];
+            int ecurr = ebegin;
+            int counter = 0;
+            do {
+              if (counter > 30)
+                throw std::runtime_error("libhedra:stitch_boundaries: This should not happened!\n "
+                                         "Verify if your UV coordinates match at the cut and if so then report a bug at: https://github.com/avaxman/libhedra/issues");
+              ecurr = nextH(ecurr);
+              counter++;
+            } while (ebegin != ecurr);
+            std::cout << j << " " << counter << std::endl;
           }
 
-          typedef std::multimap<int, int>::iterator MMAPIterator;
-          std::pair<MMAPIterator, MMAPIterator> result = right2left.equal_range(j);
-          if(std::distance(result.first, result.second) > 1) {
-            int idx0, idx1;
-            auto it = result.first;
-            idx0 = it->second;
-            std::advance(it, 1);
-            idx1 = it->second;
-            merge_edges_left(idx0, idx1, leftHE, HV, HF, nextH, prevH, twinH, removedHE, removedV);
+          kill_triangle_left(0, leftHE, HV, HF, FH, nextH, prevH, twinH,removedHE, removedV);
+
+
+//          for (int j = 0; j < rightHE.size(); j++) {
+//            std::multimap<int, int> right2left;
+//            Eigen::Vector3d M = currV.row(HV(rightHE[j])) - currV.row(HV(nextH(rightHE[j])));
+//            Eigen::Vector3d B = currV.row(HV(nextH(rightHE[j])));
+//
+//            for (int k = 0; k < leftHE.size(); k++) {
+//              Eigen::Vector3d N = (currV.row(HV(nextH(leftHE[k]))) - currV.row(HV(leftHE[k]))) / 1000.;
+//              // take middle point to avoid mismachings
+//              Eigen::Vector3d P = currV.row(HV(leftHE[k])).transpose() + N;
+//              double t = M.dot((P - B)) / (M.dot(M));
+//              std::cout << t << std::endl;
+//              if (t > 0. && t < 1.)
+//                right2left.insert(std::pair<int, int>(j, k));
+//            }
+//
+//            typedef std::multimap<int, int>::iterator MMAPIterator;
+//            std::pair<MMAPIterator, MMAPIterator> result = right2left.equal_range(j);
+//            bool ittt = nextH(nextH(leftHE[1])) == prevH(leftHE[1]);
+//            std::cout << ittt << std::endl;
+//            ittt = nextH(nextH(leftHE[2])) == prevH(leftHE[2]);
+//            std::cout << ittt << std::endl;
+
+//            if(N0.norm() < N1.norm())
+//            {
+//              if(nextH(nextH(leftHE[idx0])) == prevH(leftHE[idx0]))
+//              {
+//                kill_triangle_left(idx0, leftHE, HV, nextH, prevH, twinH,removedHE, removedV);
+//              }
+//              else
+//              {
+//                merge_edges_left(idx0, leftHE, HV, HF, FH, nextH, prevH, twinH, removedHE, removedV);
+//              }
+//            }
+//            else
+//            {
+//              if(nextH(nextH(leftHE[idx1])) == prevH(leftHE[idx1]))
+//              {
+//                kill_triangle_left(idx1, leftHE, HV, nextH, prevH, twinH,removedHE, removedV);
+//              }
+//              else
+//              {
+//                merge_edges_left(idx1, leftHE, HV, HF, FH, nextH, prevH, twinH,removedHE, removedV);
+//              }
+//            }
+
             status = true;
           }
+          return status;
         }
-      }
-      return status;
-    }
 
 
       // Connects disconnected pieces of the mesh
@@ -500,8 +541,9 @@ namespace hedra
 
           if(leftHE.size() > rightHE.size()) {
             std::cout << leftHE.size() << " before " << rightHE.size() << " l " << leftFace << " r " << rightFace  << std::endl;
-            edge_reduction(leftHE, rightHE, currV, HV, HF, nextH, prevH, twinH, removedHE, removedV, closeTolerance);
+            edge_reduction(leftHE, rightHE, currV, HV, HF, FH, nextH, prevH, twinH, removedHE, removedV, closeTolerance);
             std::cout << leftHE.size() << " after " << rightHE.size() << std::endl;
+
           }
 
 
@@ -871,12 +913,12 @@ namespace hedra
           }
 
           // generate a respective grid pattern
-          if (N == 4)
-            square_grid_pattern(UV, FUV, resolution, ti, paramArr);
-          else if (N == 6)
+//          if (N == 4)
+//            square_grid_pattern(UV, FUV, resolution, ti, paramArr);
+//          else if (N == 6)
             tri_grid_pattern(UV, FUV, resolution, ti, paramArr);
-          else
-            throw std::runtime_error("libhedra::generate_mesh: Only the square and hexagonal grids are supported!");
+//          else
+//            throw std::runtime_error("libhedra::generate_mesh: Only the square and hexagonal grids are supported!");
 
           //Constructing the overlay arrangement
           Overlay_traits ot;
@@ -1022,7 +1064,7 @@ namespace hedra
         }
 
         //mesh unification
-        stitch_boundaries(HE3D, resolution, V, EF, innerEdges, currV, EV, VH, HV, HF, FH, nextH, prevH, twinH, isParamVertex, HE2origEdges, isParamHE, overlayFace2Triangle);
+        //stitch_boundaries(HE3D, resolution, V, EF, innerEdges, currV, EV, VH, HV, HF, FH, nextH, prevH, twinH, isParamVertex, HE2origEdges, isParamHE, overlayFace2Triangle);
 
         //consolidation
         newV = currV;
