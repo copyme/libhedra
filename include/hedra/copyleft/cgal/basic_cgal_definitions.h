@@ -25,6 +25,8 @@
 #include <CGAL/Arr_default_overlay_traits.h>
 #include <vector>
 
+#include <CGAL/Exact_predicates_exact_constructions_kernel_with_sqrt.h>
+#include <CGAL/Exact_rational.h>
 
 namespace hedra
 {
@@ -33,12 +35,13 @@ namespace hedra
     namespace cgal
     {
 
-      typedef CGAL::Exact_predicates_inexact_constructions_kernel Kernel;
-      typedef CGAL::Simple_cartesian<CGAL::Gmpq>  EKernel;
+      typedef CGAL::Exact_predicates_exact_constructions_kernel_with_sqrt Kernel;
+      typedef CGAL::Simple_cartesian<CGAL::Exact_rational>  EKernel;
 
       typedef std::vector<int> SelectionCurve;
 
       typedef Kernel::RT Number;
+      typedef Kernel::FT FNumber;
       typedef EKernel::RT ENumber;
       typedef Kernel::Point_2 Point2D;
       typedef Kernel::Point_3 Point3D;
@@ -67,7 +70,7 @@ namespace hedra
       void normalize(Vector3D& v){
         v=v/sqrt(squared_distance(Point3D(0,0,0)+v,Point3D(0,0,0)));
       }
-      
+
       inline Number norm(const Vector3D &v){return sqrt(squared_distance(Point3D(0,0,0)+v,Point3D(0,0,0)));}
       
     }

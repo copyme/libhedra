@@ -17,7 +17,6 @@
 #include <CGAL/Cartesian.h>
 #include <CGAL/Polygon_2.h>
 
-#include <CGAL/Exact_rational.h>
 #include <CGAL/Arr_circle_segment_traits_2.h>
 
 #include <CGAL/Exact_predicates_inexact_constructions_kernel.h>
@@ -25,12 +24,16 @@
 #include <CGAL/Simple_cartesian.h>
 #include <CGAL/Polyhedron_3.h>
 #include <CGAL/Arr_linear_traits_2.h>
+
+#include <CGAL/Arr_geometry_traits/Circle_segment_2.h>
+
 #include <CGAL/Arrangement_2.h>
 #include <CGAL/Arr_extended_dcel.h>
 #include <CGAL/Arr_overlay_2.h>
 #include <CGAL/Arr_default_overlay_traits.h>
 #include <hedra/copyleft/cgal/basic_cgal_definitions.h>
 #include <hedra/dcel.h>
+#include <CGAL/to_rational.h>
 
 
 namespace hedra
@@ -138,44 +141,30 @@ namespace hedra
         }
       };
 
-      typedef CGAL::Cartesian<CGAL::Exact_rational>         KernelE;
-      typedef KernelE::Segment_2                             Segment2;
-      typedef KernelE::Triangle_2                             Triangle2E;
-      typedef CGAL::Arr_circle_segment_traits_2<KernelE>     Traits2;
-      typedef Traits2::CoordNT                             CoordNT;
+      typedef CGAL::Arr_linear_traits_2<Kernel>           Traits2;
       typedef Traits2::Point_2                             Point2;
-      typedef Traits2::Curve_2                             Curve2;
-      typedef Traits2::X_monotone_curve_2                  CM2;
+      typedef Traits2::Segment_2                           Segment2;
+      typedef Traits2::Line_2                              Line2;
+      typedef Traits2::X_monotone_curve_2                  X_monotone_curve_2;
+
+      typedef CGAL::Arr_extended_dcel<Traits2, int,ArrEdgeData,int>  Dcel;
+      typedef CGAL::Arrangement_2<Traits2, Dcel>                  Arr_2;
+      typedef Arr_2::Face_iterator                          Face_iterator;
+      typedef Arr_2::Face_handle                            Face_handle;
+      typedef Arr_2::Edge_iterator                          Edge_iterator;
+      typedef Arr_2::Halfedge_iterator                      Halfedge_iterator;
+      typedef Arr_2::Vertex_iterator                        Vertex_iterator;
+      typedef Arr_2::Vertex_handle                          Vertex_handle;
+      typedef Arr_2::Halfedge_handle                        Halfedge_handle;
+      typedef Arr_2::Ccb_halfedge_circulator                Ccb_halfedge_circulator;
+      typedef Arr_mesh_generation_overlay_traits <Arr_2, Arr_2,Arr_2>  Overlay_traits;
 
 
-//
-//      typedef CGAL::Arr_linear_traits_2<EKernel> Traits2;
-//      typedef Traits2::Point_2 Point2;
-//      typedef Traits2::Segment_2 Segment2;
-//      typedef Traits2::Line_2 Line2;
-//      typedef Traits2::X_monotone_curve_2 X_monotone_curve_2;
-
-      typedef CGAL::Arr_extended_dcel<Traits2, int, ArrEdgeData, int> Dcel;
-      typedef CGAL::Arrangement_2<Traits2, Dcel> Arr_2;
-      typedef Arr_2::Face_iterator Face_iterator;
-      typedef Arr_2::Face_handle Face_handle;
-      typedef Arr_2::Edge_iterator Edge_iterator;
-      typedef Arr_2::Halfedge_iterator Halfedge_iterator;
-      typedef Arr_2::Vertex_iterator Vertex_iterator;
-      typedef Arr_2::Vertex_handle Vertex_handle;
-      typedef Arr_2::Halfedge_handle Halfedge_handle;
-      typedef Arr_2::Ccb_halfedge_circulator Ccb_halfedge_circulator;
-      typedef Arr_mesh_generation_overlay_traits<Arr_2, Arr_2, Arr_2> Overlay_traits;
-
-
-      //! TODO: HEX (really needed?)
       //for now doing quad (u,v,-u -v) only!
-//      Point2 paramCoord2texCoord(Eigen::RowVectorXd paramCoord, int Resolution)
-//      {
-//        ENumber u = ENumber((int) (paramCoord(0) * (double) Resolution), Resolution);
-//        ENumber v = ENumber((int) (paramCoord(1) * (double) Resolution), Resolution);
-//        return Point2(u, v);
-//      }
+      Point2 paramCoord2texCoord(const Eigen::RowVectorXd & paramCoord)
+      {
+        return Point2(Number(paramCoord(0)), Number(paramCoord(1)));
+      }
 
 
       // Input:
@@ -223,12 +212,9 @@ namespace hedra
 
         Eigen::Matrix2d cH;
         cH << std::sqrt(3.), -std::sqrt(3.) / 2., 0., -3. / 2.;
+        std::vector<Number> coordsX(3);
+        std::vector<Number> coordsY(3);
 
-        CoordNT sqrt_3 = CoordNT(0, 1, 3);
-        CoordNT sqrt_3_div_2 = CoordNT(CGAL::Exact_rational(0), CGAL::Exact_rational(1,2), CGAL::Exact_rational(3));
-        CoordNT sqrt_3_div_4 = CoordNT(CGAL::Exact_rational(0), CGAL::Exact_rational(1,4), CGAL::Exact_rational(3));
-        std::vector<CoordNT> coordsX(3);
-        std::vector<CoordNT> coordsY(3);
 
         Eigen::MatrixXd facePC(3, UV.cols()); // PC.cols == 2
         for (int i = 0; i < 3; i++) {
@@ -254,40 +240,36 @@ namespace hedra
               facePC(i, 0) = cubeR(0);
               facePC(i, 1) = cubeR(1);
             }
-            //facePC.row(i) = cH * facePC.row(i).eval().transpose();
             Eigen::Vector2d p = facePC.row(i);
-            coordsX[i] = CGAL::Exact_rational((int) p(0)) * sqrt_3 - CGAL::Exact_rational((int) p(1)) * sqrt_3_div_2;
-            coordsY[i] = CoordNT(CGAL::Exact_rational((int) p(1)) * CGAL::Exact_rational(-3, 2));
+            coordsX[i] = Number((int)p(0)) * CGAL::sqrt(Number(3)) - Number((int)p(1)) * CGAL::sqrt(Number(3)) / Number(2);
+            coordsY[i] = Number((int)p(1)) * Number(-3) / Number(2);
         }
 
         // find min and max x
-        CoordNT coordMinX = *(std::min_element(coordsX.cbegin(), coordsX.cend()));
-        CoordNT coordMaxX = *(std::max_element(coordsX.cbegin(), coordsX.cend()));
+        Number coordMinX = *(std::min_element(coordsX.cbegin(), coordsX.cend()));
+        Number coordMaxX = *(std::max_element(coordsX.cbegin(), coordsX.cend()));
 
-        CoordNT coordMinY = *(std::min_element(coordsY.cbegin(), coordsY.cend()));
-        CoordNT coordMaxY = *(std::max_element(coordsY.cbegin(), coordsY.cend()));
-
-          //inserting unbounded lines -- vertical
-          std::vector<Curve2> lineCurves;
-          for (CoordNT coordIndex = coordMinX - sqrt_3; coordIndex <= coordMaxX; coordIndex += sqrt_3_div_4) {
-            auto t0 = KernelE::Point_2(CGAL::to_double(coordIndex), CGAL::to_double(coordMinY - CGAL::Exact_rational(1, 2)));
-            auto t1 = KernelE::Point_2(CGAL::to_double(coordIndex), CGAL::to_double(coordMaxY + CGAL::Exact_rational(1, 2)));
-            Segment2 seg(t0, t1);
-            lineCurves.emplace_back(seg);
+        std::cout << coordMinX << " " << coordMaxX << " " << coordMaxX - CGAL::sqrt(Number(3)) / Number(4) << std::endl;
+        //inserting unbounded lines -- vertical
+          std::vector<Line2> lineCurves;
+        Number inc = CGAL::sqrt(Number(3)) / Number(4);
+          for (Number coordIndex = coordMinX - CGAL::sqrt(Number(3)); coordIndex <= coordMaxX; coordIndex += inc) {
+            lineCurves.emplace_back(Point2(coordIndex, Number(0)), Point2(coordIndex, Number(1)));
           }
+        Number shift(std::round(CGAL::to_double(std::max(coordMaxX - coordMinX, *(std::max_element(coordsY.cbegin(), coordsY.cend())) - *(std::min_element(coordsY.cbegin(), coordsY.cend()))))));
+        Number coordMinY = *(std::min_element(coordsY.cbegin(), coordsY.cend())) - shift;
+        Number coordMaxY = *(std::max_element(coordsY.cbegin(), coordsY.cend())) + shift;
 
-//        coordMin = facePC.col(1).minCoeff() - std::max(std::round(facePC.col(1).maxCoeff() - facePC.col(1).minCoeff()), std::round(facePC.col(0).maxCoeff() - facePC.col(0).minCoeff()));
-//        coordMax = facePC.col(1).maxCoeff() + std::max(std::round(facePC.col(1).maxCoeff() - facePC.col(1).minCoeff()), std::round(facePC.col(0).maxCoeff() - facePC.col(0).minCoeff()));
-//        for (double coordIndex = coordMin; coordIndex < coordMax + 1e-6; coordIndex += 1./2. ) {
-//          //The line coord = coordIndex
-//          Eigen::Vector2d LineCoord1 = Eigen::Vector2d(0, 0) + Eigen::Vector2d(facePC.col(0).maxCoeff(), coordIndex);
-//          Eigen::Vector2d LineCoord2 = Eigen::Vector2d(sqrt(3.) / 2., 1/2.) + Eigen::Vector2d(facePC.col(0).maxCoeff(), coordIndex);
-//          lineCurves.emplace_back(paramCoord2texCoord(LineCoord1, resolution), paramCoord2texCoord(LineCoord2, resolution));
-//
-//          LineCoord1 = Eigen::Vector2d(0, 0) + Eigen::Vector2d(facePC.col(0).maxCoeff(), coordIndex);
-//          LineCoord2 = Eigen::Vector2d(-sqrt(3.) / 2., 1/2.) + Eigen::Vector2d(facePC.col(0).maxCoeff(), coordIndex);
-//          lineCurves.emplace_back(paramCoord2texCoord(LineCoord1, resolution), paramCoord2texCoord(LineCoord2, resolution));
-//        }
+        inc = Number(1) / Number(2);
+        Number yShift = inc;
+        Number xShift = CGAL::sqrt(Number(3)) / Number(2);
+
+        for (Number coordIndex = coordMinY; coordIndex <= coordMaxY; coordIndex += inc) {
+          //The line coord = coordIndex
+          lineCurves.emplace_back(Point2(coordMaxX, coordIndex), Point2(coordMaxX + xShift, coordIndex + yShift));
+          lineCurves.emplace_back(Point2(coordMaxX, coordIndex), Point2(coordMaxX - xShift, coordIndex + yShift));
+
+        }
         insert(paramArr, lineCurves.begin(), lineCurves.end());
       }
 
@@ -465,7 +447,7 @@ namespace hedra
 
       // Output:
       IGL_INLINE void stitch_boundaries(
-                                        std::vector<EPoint3D> & HE3D,
+                                        std::vector<Point3D> & HE3D,
                                         int resolution,
                                         const Eigen::MatrixXd & V,
                                         const Eigen::MatrixXi & triEF,
@@ -527,30 +509,27 @@ namespace hedra
 
           //sort left and right edges
           Eigen::RowVector3d refV = V.row(EV(currEdge, 0)) - (V.row(EV(currEdge, 1)) - V.row(EV(currEdge, 0))) * 2.;
-          EPoint3D ref(ENumber((int) (refV(0) * (double) resolution), resolution),
-                               ENumber((int) (refV(1) * (double) resolution), resolution),
-                               ENumber((int) (refV(2) * (double) resolution), resolution)
-          );
+          Point3D ref(Number(refV(0)), Number(refV(1)), Number(refV(2)));
 
           std::stable_sort(leftHE.begin(), leftHE.end(),
                            [&ref, &HE3D, &HV](const int &a, const int &b) -> bool {
-                             EPoint3D A = HE3D[HV(a)];
-                             EPoint3D B = HE3D[HV(b)];
+                             Point3D A = HE3D[HV(a)];
+                             Point3D B = HE3D[HV(b)];
                              return CGAL::has_smaller_distance_to_point(ref, A, B);
                            }
           );
 
           std::stable_sort(rightHE.begin(), rightHE.end(),
                            [&ref, &HE3D, &HV](const int &a, const int &b) -> bool {
-                             EPoint3D A = HE3D[HV(a)];
-                             EPoint3D B = HE3D[HV(b)];
+                             Point3D A = HE3D[HV(a)];
+                             Point3D B = HE3D[HV(b)];
                              return CGAL::has_smaller_distance_to_point(ref, A, B);
 
                            }
           );
 
-          EPoint3D A = HE3D[HV(leftHE[0])];
-          EPoint3D B = HE3D[HV(rightHE[0])];
+          Point3D A = HE3D[HV(leftHE[0])];
+          Point3D B = HE3D[HV(rightHE[0])];
           // swap if the right is really left and vice versa
           if(CGAL::has_smaller_distance_to_point(ref, B, A))
           {
@@ -567,7 +546,7 @@ namespace hedra
 
           if(leftHE.size() > rightHE.size()) {
             std::cout << leftHE.size() << " before " << rightHE.size() << " l " << leftFace << " r " << rightFace  << std::endl;
-            edge_reduction(leftHE, rightHE, currV, HV, HF, FH, nextH, prevH, twinH, removedHE, removedV, closeTolerance);
+            //edge_reduction(leftHE, rightHE, currV, HV, HF, FH, nextH, prevH, twinH, removedHE, removedV, closeTolerance);
             std::cout << leftHE.size() << " after " << rightHE.size() << std::endl;
 
           }
@@ -892,7 +871,7 @@ namespace hedra
         std::vector<bool> isParamHE; // information if a given half-edge is from the parametrization
         std::vector<int> overlayFace2Triangle; // triangle face ID or -1 when a face is unbounded
 
-        std::vector<EPoint3D> HE3D;
+        std::vector<Point3D> HE3D;
 
         double minrange = (UV.colwise().maxCoeff() - UV.colwise().minCoeff()).minCoeff();
         // find the denominator for the  rational number representation
@@ -918,10 +897,10 @@ namespace hedra
             Eigen::RowVectorXd UV2 = UV.row(FUV(ti, (j + 1) % 3));
 
             //avoid degenerate cases in non-bijective parametrizations
-            //if(paramCoord2texCoord(UV1, resolution) == paramCoord2texCoord(UV2, resolution))
-            //  throw std::runtime_error("libhedra::generate_mesh: Only bijective parametrizations are supported, sorry!");
-            auto tmp = CM2(KernelE::Point_2(UV1(0), UV1(1)), KernelE::Point_2(UV2(0), UV2(1)));
-            Halfedge_handle he = CGAL::insert_non_intersecting_curve(triangleArr, tmp);
+            if(paramCoord2texCoord(UV1) == paramCoord2texCoord(UV2))
+              throw std::runtime_error("libhedra::generate_mesh: Only bijective parametrizations are supported, sorry!");
+            Halfedge_handle he=CGAL::insert_non_intersecting_curve(triangleArr, Segment2D(paramCoord2texCoord(UV1), paramCoord2texCoord(UV2)));
+
             ArrEdgeData aed;
             aed.isParam = false;
             aed.origEdge = FE(ti, j);
@@ -943,6 +922,7 @@ namespace hedra
 //            square_grid_pattern(UV, FUV, resolution, ti, paramArr);
 //          else if (N == 6)
             tri_grid_pattern(UV, FUV, resolution, ti, paramArr);
+          std::cout << "after " << std::endl;
 //          else
 //            throw std::runtime_error("libhedra::generate_mesh: Only the square and hexagonal grids are supported!");
 
@@ -1050,8 +1030,8 @@ namespace hedra
             if (vi->data() < 0)
               continue;
 
-            KernelE::RT BaryValues[3];
-            KernelE::RT Sum = 0;
+            Number BaryValues[3];
+            Number Sum = 0;
 
             for (int i = 0; i < 3; i++)
             {
@@ -1063,8 +1043,7 @@ namespace hedra
               Eigen::RowVectorXd UV2 = UV.row(FUV(ti, (i + 1) % 3));
               Eigen::RowVectorXd UV3 = UV.row(FUV(ti, (i + 2) % 3));
 
-
-              Triangle2E t(KernelE::Point_2(CGAL::to_double(vi->point().x()), CGAL::to_double(vi->point().y())), KernelE::Point_2(UV2(0), UV2(1)), KernelE::Point_2(UV3(0), UV3(1)));
+              Triangle2D t(vi->point(), paramCoord2texCoord(UV2),  paramCoord2texCoord(UV3));
               BaryValues[i] = t.area();
               Sum += BaryValues[i];
             }
@@ -1072,15 +1051,15 @@ namespace hedra
             for (int i = 0; i < 3; i++)
               BaryValues[i] /= Sum;
 
-            KernelE::Point_3 ENewPosition(0, 0, 0);
+            Point3D ENewPosition(0, 0, 0);
             //find the weighted position of the vertex inside the face, i.e., the 3D position of the vertex lifted to 3D
             for (int i = 0; i < 3; i++)
             {
-              KernelE::Point_3 vertexCoord(V(F(ti, i), 0), V(F(ti, i), 1), V(F(ti, i), 2));
+              Point3D vertexCoord(V(F(ti, i), 0), V(F(ti, i), 1), V(F(ti, i), 2));
 
               ENewPosition = ENewPosition + (vertexCoord - CGAL::ORIGIN) * BaryValues[i];
             }
-            //HE3D[vi->data()] = ENewPosition;
+            HE3D[vi->data()] = ENewPosition;
             currV.row(vi->data()) = Eigen::RowVector3d(CGAL::to_double(ENewPosition.x()),
                                                        CGAL::to_double(ENewPosition.y()),
                                                        CGAL::to_double(ENewPosition.z()));
@@ -1088,7 +1067,7 @@ namespace hedra
         }
 
         //mesh unification
-        //stitch_boundaries(HE3D, resolution, V, EF, innerEdges, currV, EV, VH, HV, HF, FH, nextH, prevH, twinH, isParamVertex, HE2origEdges, isParamHE, overlayFace2Triangle);
+        stitch_boundaries(HE3D, resolution, V, EF, innerEdges, currV, EV, VH, HV, HF, FH, nextH, prevH, twinH, isParamVertex, HE2origEdges, isParamHE, overlayFace2Triangle);
 
         //consolidation
         newV = currV;
