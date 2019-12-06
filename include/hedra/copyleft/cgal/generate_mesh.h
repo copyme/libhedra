@@ -251,8 +251,8 @@ namespace hedra
         // find min and max x
         Number coordMinY = *(std::min_element(coordsY.cbegin(), coordsY.cend()));
         Number coordMaxY = *(std::max_element(coordsY.cbegin(), coordsY.cend()));
-        Number coordMinX = *(std::min_element(coordsX.cbegin(), coordsX.cend())) /*- shift*/;
-        Number coordMaxX = *(std::max_element(coordsX.cbegin(), coordsX.cend())) /*+ shift*/;
+        Number coordMinX = *(std::min_element(coordsX.cbegin(), coordsX.cend()));
+        Number coordMaxX = *(std::max_element(coordsX.cbegin(), coordsX.cend()));
 
         //inserting unbounded lines -- vertical
           std::vector<Line2> lineCurves;
@@ -276,25 +276,14 @@ namespace hedra
 
             c++;
           }
-        //Number shift((int)std::round(CGAL::to_double(std::max(coordMaxX - coordMinX, *(std::max_element(coordsY.cbegin(), coordsY.cend())) - *(std::min_element(coordsY.cbegin(), coordsY.cend()))))));
-
-//        inc = Number(3) / Number(2);
-//        Number xShift = inc;
-//        Number yShift = sqrt_3 / Number(2);
-//
-//        for (Number coordIndex = coordMinX; coordIndex <= coordMaxX; coordIndex += inc) {
-//          //The line coord = coordIndex
-//          lineCurves.emplace_back(Point2(coordIndex, coordMinY), Point2(coordIndex + xShift, coordMinY + yShift));
-//          lineCurves.emplace_back(Point2(coordIndex, coordMinY), Point2(coordIndex + xShift, coordMinY - yShift));
-//
-//        }
         insert(paramArr, lineCurves.begin(), lineCurves.end());
       }
 
 
-      void merge_edges_left(
-          const int idx,
-          std::vector<int> &leftHE,
+
+      void contract_edge(
+          const int eID,
+          Eigen::MatrixXd & currV,
           Eigen::VectorXi &HV,
           Eigen::VectorXi &HF,
           Eigen::VectorXi & FH,
@@ -304,36 +293,35 @@ namespace hedra
           std::set<int> & removedHE,
           std::set<int> & removedV) {
 
-        prevH(nextH(leftHE[idx])) = prevH(leftHE[idx]);
-        nextH(prevH(leftHE[idx])) = nextH(leftHE[idx]);
+        prevH(nextH(eID)) = prevH(eID);
+        nextH(prevH(eID)) = nextH(eID);
 
-        int ebegin = twinH(prevH(leftHE[idx]));
-        int ecurr = ebegin;
-        int counter = 0;
-        do {
-          if (counter > 30)
-            throw std::runtime_error("libhedra:stitch_boundaries: This should not happened!\n "
-                                     "Verify if your UV coordinates match at the cut and if so then report a bug at: https://github.com/avaxman/libhedra/issues");
-          if(ecurr == -1)
-            break;
+        Eigen::Vector3d mid = currV.row(HV(eID)) + (currV.row(HV(nextH(eID))) - currV.row(HV(eID))) / 2.;
+        currV.row(HV(nextH(eID))) = mid;
 
-          HV(ecurr) = HV(nextH(leftHE[idx]));
-          ecurr = twinH(prevH(ecurr));
-          counter++;
-        } while (ebegin != ecurr);
+        int toRM = HV(eID);
+        int keep = HV(nextH(eID));
+        removedV.insert(toRM);
+        for(int k = 0; k < HV.rows(); k++)
+          if(HV(k) == toRM)
+            HV(k) = keep;
 
+        removedHE.insert(eID);
+        FH(HF(eID)) = nextH(eID);
 
-        removedHE.insert(leftHE[idx]);
-        removedV.insert(HV(leftHE[idx]));
-        FH(HF(leftHE[idx])) = nextH(leftHE[idx]);
+        //remove twin
+        if(twinH(eID) != -1)
+        {
+          removedHE.insert(twinH(eID));
+          FH(HF(twinH(eID))) = nextH(twinH(eID));
 
-        leftHE.erase(leftHE.begin() + idx);
+          prevH(nextH(twinH(eID))) = prevH(twinH(eID));
+          nextH(prevH(twinH(eID))) = nextH(twinH(eID));
+        }
       }
 
-
-      void kill_triangle_left(
-          const int idx,
-          std::vector<int> &leftHE,
+      void remove_face(
+          const int eID,
           Eigen::MatrixXd & currV,
           Eigen::VectorXi &HV,
           Eigen::VectorXi & HF,
@@ -343,583 +331,55 @@ namespace hedra
           Eigen::VectorXi &twinH,
           std::set<int> & removedHE,
           std::set<int> & removedV) {
+      //find edges to contract
+      std::vector<int> rmE;
+      int ebegin = eID;
+      int ecurr = ebegin;
+      int counter = 0;
+      do {
+        if (counter > 30)
+          throw std::runtime_error("libhedra:stitch_boundaries: This should not happened!\n "
+                                   "Verify if your UV coordinates match at the cut and if so then report a bug at: https://github.com/avaxman/libhedra/issues");
+        rmE.push_back(ecurr);
+        ecurr = nextH(ecurr);
+        counter++;
+      } while (ebegin != ecurr);
+      for(auto id : rmE)
+        contract_edge(id, currV,HV,HF,FH,nextH,prevH,twinH,removedHE,removedV);
+    }
 
-        //removed tri edges
-        removedHE.insert(leftHE[idx]);
-        removedHE.insert(nextH(leftHE[idx]));
-        removedHE.insert(prevH(leftHE[idx]));
+      // from right to left
 
-
-        if(twinH(prevH(leftHE[idx])) != -1 && twinH(nextH(leftHE[idx])) != -1)
-        {
-//          //return;
-          std::cout << "middle tri" << std::endl;
-          Eigen::Vector3d mid = currV.row(HV(leftHE[idx])) + (currV.row(HV(nextH(leftHE[idx]))) - currV.row(HV(leftHE[idx]))) / 2.;
-//
-//          removedV.insert(HV(leftHE[idx]));
-//          removedV.insert(HV(nextH(leftHE[idx])));
-//          //bottom
-//          prevH(nextH(twinH(prevH(leftHE[idx])))) = prevH(twinH(prevH(leftHE[idx])));
-//          nextH(prevH(twinH(prevH(leftHE[idx])))) = nextH(twinH(prevH(leftHE[idx])));
-//
-          currV.row(HV(twinH(nextH(leftHE[idx])))) = mid;
-//
-//          removedHE.insert(twinH(prevH(leftHE[idx])));
-//          removedHE.insert(twinH(nextH(leftHE[idx])));
-//
-//          FH(HF(twinH(nextH(leftHE[idx])))) =  nextH(twinH(nextH(leftHE[idx])));
-//          FH(HF(twinH(prevH(leftHE[idx])))) =  nextH(twinH(prevH(leftHE[idx])));
-//
-          int toRM = HV(leftHE[idx]);
-          int keep = HV(twinH(nextH(leftHE[idx])));
-          for(int k = 0; k < HV.rows(); k++)
-            if(HV(k) == toRM)
-              HV(k) = keep;
-
-          toRM = HV(nextH(leftHE[idx]));
-          keep = HV(twinH(nextH(leftHE[idx])));
-          for(int k = 0; k < HV.rows(); k++)
-            if(HV(k) == toRM)
-              HV(k) = keep;
-//
-//          // top
-//          prevH(nextH(twinH(nextH(leftHE[idx])))) = prevH(twinH(nextH(leftHE[idx])));
-//          nextH(prevH(twinH(nextH(leftHE[idx])))) = nextH(twinH(nextH(leftHE[idx])));
-        }
-        // top triangle
-        else if(twinH(prevH(leftHE[idx])) != -1)
-        {
-          std::cout << "top tri" << std::endl;
-          prevH(nextH(twinH(prevH(leftHE[idx])))) = prevH(twinH(prevH(leftHE[idx])));
-          nextH(prevH(twinH(prevH(leftHE[idx])))) = nextH(twinH(prevH(leftHE[idx])));
-
-          removedHE.insert(twinH(prevH(leftHE[idx])));
-
-          FH(HF(twinH(prevH(leftHE[idx])))) =  nextH(twinH(prevH(leftHE[idx])));
-
-          int toRM = HV(leftHE[idx]);
-          int keep = HV(nextH(leftHE[idx]));
-          for(int k = 0; k < HV.rows(); k++)
-            if(HV(k) == toRM)
-              HV(k) = keep;
-
-          toRM = HV(prevH(leftHE[idx]));
-          keep = HV(nextH(leftHE[idx]));
-          for(int k = 0; k < HV.rows(); k++)
-            if(HV(k) == toRM)
-              HV(k) = keep;
-        }
-        else {
-          std::cout << "bottom tri" << std::endl;
-
-          prevH(nextH(twinH(nextH(leftHE[idx])))) = prevH(twinH(nextH(leftHE[idx])));
-          nextH(prevH(twinH(nextH(leftHE[idx])))) = nextH(twinH(nextH(leftHE[idx])));
-
-          removedHE.insert(twinH(nextH(leftHE[idx])));
-
-          FH(HF(twinH(nextH(leftHE[idx])))) =  nextH(twinH(nextH(leftHE[idx])));
-
-
-          int toRM = HV(nextH(twinH(nextH(leftHE[idx]))));
-          int keep = HV(leftHE[idx]);
-          for(int k = 0; k < HV.rows(); k++)
-            if(HV(k) == toRM)
-              HV(k) = keep;
-
-          toRM = HV(prevH(leftHE[idx]));
-          keep = HV(leftHE[idx]);
-          for(int k = 0; k < HV.rows(); k++)
-            if(HV(k) == toRM)
-              HV(k) = keep;
-        }
-
-        leftHE.erase(leftHE.begin() + idx);
-      }
-
-      bool edge_reduction(std::vector<int> & leftHE,
+    void find_edge_map(std::vector<int> & leftHE,
                           std::vector<int> & rightHE,
-                        Eigen::MatrixXd & currV,
-                        Eigen::VectorXi & HV,
-                        Eigen::VectorXi & HF,
-                          Eigen::VectorXi & FH,
+                          std::vector<Point3D> & HE3D,
+                          Eigen::VectorXi & HV,
                           Eigen::VectorXi & nextH,
-                        Eigen::VectorXi & prevH,
-                        Eigen::VectorXi & twinH,
-                        std::set<int> & removedHE,
-                        std::set<int> & removedV,
-                        const double closeTolerance = 10e-30) {
-        bool status = false;
+                          std::multimap<int, int> & left2right)
+                          {
 
+      for (int j = 0; j < leftHE.size(); j++) {
+        //Eigen::Vector3d M = currV.row(HV(nextH(leftHE[j]))) - currV.row(HV(leftHE[j]));
+        //Eigen::Vector3d B = currV.row(HV(leftHE[j]));
+        auto sl = Segment3D(HE3D[HV(leftHE[j])], HE3D[HV(nextH(leftHE[j]))]);
 
-//          for (int j = 0; j < rightHE.size(); j++) {
-//            std::multimap<int, int> right2left;
-//            Eigen::Vector3d M = currV.row(HV(rightHE[j])) - currV.row(HV(nextH(rightHE[j])));
-//            Eigen::Vector3d B = currV.row(HV(nextH(rightHE[j])));
-//
-//            for (int k = 0; k < leftHE.size(); k++) {
-//              Eigen::Vector3d N = (currV.row(HV(nextH(leftHE[k]))) - currV.row(HV(leftHE[k]))) / 2.;
-//              // take middle point to avoid mismachings
-//              Eigen::Vector3d P = currV.row(HV(leftHE[k])).transpose() + N;
-//              double t = M.dot((P - B)) / (M.dot(M));
-//              std::cout << t << std::endl;
-//              if (t > 0. && t < 1.)
-//                right2left.insert(std::pair<int, int>(j, k));
-//            }
-//
-//            typedef std::multimap<int, int>::iterator MMAPIterator;
-//            std::pair<MMAPIterator, MMAPIterator> result = right2left.equal_range(j);
-//            int idx = -1;
-//            double N = 300000;
-//
-//            if (std::distance(result.first, result.second) < 2)
-//              continue;
-//
-//            for (auto it = result.first; it != result.second; it++)
-//            {
-//              double tmp = (currV.row(HV(nextH(leftHE[it->second]))) - currV.row(HV(leftHE[it->second]))).norm();
-//              if(tmp < N)
-//              {
-//                idx = it->second;
-//                N = tmp;
-//              }
-//            }
-//
-//            if(nextH(nextH(leftHE[idx])) == prevH(leftHE[idx])) {
-//            kill_triangle_left(idx, leftHE, HV, HF, FH, nextH, prevH, twinH, removedHE, removedV);
-//             return true;
-//            }
-//           else {
-//              merge_edges_left(idx, leftHE, HV, HF, FH, nextH, prevH, twinH, removedHE, removedV);
-//              return true;
-//            }
-//
-//            status = true;
-//          }
-//          return status;
-
-
-            int idx = -1;
-            double N = 300000;
-
-        for (int i = 0; i < leftHE.size(); i++)
-        {
-          double tmp = (currV.row(HV(nextH(leftHE[i]))) - currV.row(HV(leftHE[i]))).norm();
-          std::cout << tmp << std::endl;
-          if(tmp < N)
-          {
-            idx = i;
-            N = tmp;
+        for (int k = 0; k < rightHE.size(); k++) {
+          auto sr = Segment3D(HE3D[HV(rightHE[k])], HE3D[HV(nextH(rightHE[k]))]);
+          auto result = CGAL::intersection (sl, sr);
+          //Eigen::Vector3d N = (currV.row(HV(nextH(rightHE[k]))) - currV.row(HV(rightHE[k]))) / 2.;
+          // take middle point to avoid mismachings
+          //Eigen::Vector3d P = currV.row(HV(rightHE[k])).transpose() + N;
+          //double t = M.dot((P - B)) / (M.dot(M));
+          //if (t > 0. && t < 1.) {
+          //  std::cout << j << " " << k << " " << t << std::endl;
+          if(result) {
+            left2right.insert(std::pair<int, int>(j, k));
+              //std::cout << "map: " << j << " " << k << std::endl;
           }
-        }
-
-        if(nextH(nextH(leftHE[idx])) == prevH(leftHE[idx])) {
-          kill_triangle_left(idx, leftHE, currV, HV, HF, FH, nextH, prevH, twinH, removedHE, removedV);
-          return true;
-        }
-        else {
-          merge_edges_left(idx, leftHE, HV, HF, FH, nextH, prevH, twinH, removedHE, removedV);
-          return true;
+         // }
         }
       }
-
-
-      // Connects disconnected pieces of the mesh
-
-      // Input:
-      // EF               #E by 2, stores the Edge-Face relation of the original triangle mesh
-      // triInnerEdges    #E, stores information about inner edges of the original triagle mesh i.e., no boundary edges
-      // currV            current vertices (old and new vertices together ???)
-      // VH               map from vertices to the half-edges which start at these vertices
-      // HV               map from half-edges to their source vertices
-      // HF               map from half-edges to the corresponding faces
-      // FH               map of each face with one of the half-edges
-      // nextH            next half-edge
-      // prevH            previous half-edge
-      // twinH            twin half-edge (if -1 then an edge is a boundery edge)
-      // isParamVertex    information of a given vertex is from the parametrization
-      // HE2origEdges     map between half-edges and original edges
-      // ParamHE          information if a given half-edge is from the parametrization
-      // overlayFace2Tri  triangle face ID or -1 when a face is unbounded
-      // closeTolerance   value with which the new vertices are stiched
-
-      // Output:
-      IGL_INLINE void stitch_boundaries(
-                                        std::vector<Point3D> & HE3D,
-                                        int resolution,
-                                        const Eigen::MatrixXd & V,
-                                        const Eigen::MatrixXi & triEF,
-                                        const Eigen::VectorXi & triInnerEdges,
-                                        Eigen::MatrixXd & currV,
-                                        const Eigen::MatrixXi & EV,
-                                        Eigen::VectorXi & VH,
-                                        Eigen::VectorXi & HV,
-                                        Eigen::VectorXi & HF,
-                                        Eigen::VectorXi & FH,
-                                        Eigen::VectorXi & nextH,
-                                        Eigen::VectorXi & prevH,
-                                        Eigen::VectorXi & twinH,
-                                        std::vector<bool> & isParamVertex,
-                                        std::vector<int> & HE2origEdges,
-                                        std::vector<bool> & isParamHE,
-                                        std::vector<int> & overlayFace2Tri,
-                                        const double closeTolerance = 10e-30) {
-        // create a map from the original edges to the half-edges
-        std::vector<std::vector<int> > origEdges2HE(triEF.rows());
-        for (int i = 0; i < HE2origEdges.size(); i++) {
-          if (HE2origEdges[i] < 0)
-            continue;
-          origEdges2HE[HE2origEdges[i]].push_back(i);
-        }
-        Eigen::VectorXi oldHF = HF;
-
-        // bind faces with parameter lines
-        for (size_t k = 0; k < FH.size(); k++) {
-          int ebegin = FH(k);
-          int ecurr = ebegin;
-          do {
-            if (isParamHE[ecurr]) {
-              FH(k) = ecurr;
-              break;
-            }
-            ecurr = nextH(ecurr);
-          } while (ebegin != ecurr);
-        }
-
-        //for every original inner edge, stitching up boundary (original boundary edges don't have any action item)
-        for (int i = 0; i < triInnerEdges.size(); i++) {
-          //first sorting to left and right edges according to faces
-          int currEdge = triInnerEdges(i);
-          int leftFace = triEF(currEdge, 1);
-          int rightFace = triEF(currEdge, 0);
-
-          std::vector<int> leftHE, rightHE;
-          for (size_t k = 0; k < origEdges2HE[currEdge].size(); k++) {
-            if (overlayFace2Tri[oldHF(origEdges2HE[currEdge][k])] == leftFace) {
-              leftHE.push_back(origEdges2HE[currEdge][k]);
-            } else if (overlayFace2Tri[oldHF(origEdges2HE[currEdge][k])] == rightFace) {
-              rightHE.push_back(origEdges2HE[currEdge][k]);
-            } else
-              throw std::runtime_error(
-                  "libhedra:stitch_boundaries: This should not happened! Report a bug at: https://github.com/avaxman/libhedra/issues");
-          }
-
-
-          //sort left and right edges
-          Eigen::RowVector3d refV = V.row(EV(currEdge, 0)) - (V.row(EV(currEdge, 1)) - V.row(EV(currEdge, 0))) * 2.;
-          Point3D ref(Number(refV(0)), Number(refV(1)), Number(refV(2)));
-
-          std::stable_sort(leftHE.begin(), leftHE.end(),
-                           [&ref, &HE3D, &HV](const int &a, const int &b) -> bool {
-                             Point3D A = HE3D[HV(a)];
-                             Point3D B = HE3D[HV(b)];
-                             return CGAL::has_smaller_distance_to_point(ref, A, B);
-                           }
-          );
-
-          std::stable_sort(rightHE.begin(), rightHE.end(),
-                           [&ref, &HE3D, &HV](const int &a, const int &b) -> bool {
-                             Point3D A = HE3D[HV(a)];
-                             Point3D B = HE3D[HV(b)];
-                             return CGAL::has_smaller_distance_to_point(ref, A, B);
-
-                           }
-          );
-
-          Point3D A = HE3D[HV(leftHE[0])];
-          Point3D B = HE3D[HV(rightHE[0])];
-          // swap if the right is really left and vice versa
-          if(CGAL::has_smaller_distance_to_point(ref, B, A))
-          {
-            for(size_t k = 0; k < leftHE.size(); k++)
-              std::swap(leftHE[k], rightHE[k]);
-          }
-
-          // garbage collector
-          std::set<int> removedHE, removedV;
-
-
-          if(rightHE.size() > leftHE.size())
-            continue;
-
-          while(leftHE.size() > rightHE.size()) {
-            std::cout << leftHE.size() << " before " << rightHE.size() << " l " << leftFace << " r " << rightFace  << std::endl;
-            edge_reduction(leftHE, rightHE, currV, HV, HF, FH, nextH, prevH, twinH, removedHE, removedV, closeTolerance);
-            std::cout << leftHE.size() << " after " << rightHE.size() << std::endl;
-
-          }
-
-          for (size_t j = 0; j < leftHE.size(); j++) {
-            if (!(isParamHE[leftHE[j]] && isParamHE[rightHE[j]])) {
-              int ebegin = rightHE[j];
-              int ecurr = ebegin;
-              int counter = 0;
-              do {
-                if (counter > 30)
-                  throw std::runtime_error("libhedra:stitch_boundaries: This should not happened!\n "
-                                           "Verify if your UV coordinates match at the cut and if so then report a bug at: https://github.com/avaxman/libhedra/issues");
-                HF(ecurr) = HF(leftHE[j]);
-                ecurr = nextH(ecurr);
-                counter++;
-              } while (ebegin != ecurr);
-            }
-          }
-
-          //find maching source vertices from left to right
-          for (size_t j = 1; j < leftHE.size(); j++) {
-            /* consider a case when both edges from the pair are not parameter lines, i.e.,
-             * the edges have to be removed.
-             */
-            // remove the pair from the orphanage
-            if (!isParamHE[leftHE[j]] && !isParamHE[rightHE[j]] && !isParamVertex[HV(leftHE[j])]) {
-              nextH(prevH(leftHE[j])) = nextH(nextH(rightHE[j]));
-              prevH(nextH(nextH(rightHE[j]))) = prevH(leftHE[j]);
-
-              nextH(twinH(nextH(rightHE[j]))) = nextH(twinH(prevH(leftHE[j])));
-              prevH(nextH(twinH(prevH(leftHE[j])))) = twinH(nextH(rightHE[j]));
-
-              // garbage collector
-              removedHE.insert(twinH(prevH(leftHE[j])));
-              removedHE.insert(nextH(rightHE[j]));
-
-              // stich twins
-              twinH(prevH(leftHE[j])) = twinH(nextH(rightHE[j]));
-              twinH(twinH(nextH(rightHE[j]))) = prevH(leftHE[j]);
-
-              // garbage collector
-              removedHE.insert(leftHE[j]);
-              removedHE.insert(rightHE[j]);
-              removedV.insert(HV(leftHE[j]));
-              removedV.insert(HV(nextH(rightHE[j])));
-
-              //ensure that a face is not refered to a removed edge
-              FH(HF(twinH(prevH(leftHE[j])))) = twinH(nextH(rightHE[j]));
-              FH(HF(nextH(rightHE[j]))) = prevH(leftHE[j]);
-            }
-              //rotated cross case
-            else if (!isParamHE[leftHE[j]] && !isParamHE[rightHE[j]] && isParamVertex[HV(leftHE[j])]) {
-
-              // stitch f0
-              nextH(prevH(leftHE[j])) = nextH(rightHE[j]);
-              prevH(nextH(rightHE[j])) = prevH(leftHE[j]);
-
-              //garnage collector
-              removedHE.insert(leftHE[j]);
-              removedHE.insert(rightHE[j]);
-              removedV.insert(HV(nextH(rightHE[j])));
-
-              // update vertex
-              int ebegin = rightHE[j];
-              int ecurr = ebegin;
-              int counter = 0;
-              do {
-                if (counter > 30)
-                  throw std::runtime_error("libhedra:stitch_boundaries: This should not happened!\n "
-                                           "Verify if your UV coordinates match at the cut and if so then report a bug at: https://github.com/avaxman/libhedra/issues");
-                HV(nextH(ecurr)) = HV(leftHE[j]);
-                ecurr = twinH(nextH(ecurr));
-                counter++;
-              } while (twinH(nextH(ecurr)) != -1);
-
-              // stitch f1
-              prevH(twinH(prevH(twinH(prevH(leftHE[j]))))) = twinH(nextH(twinH(nextH(rightHE[j]))));
-              nextH(twinH(nextH(twinH(nextH(rightHE[j]))))) = twinH(prevH(twinH(prevH(leftHE[j]))));
-
-            } else if (isParamHE[leftHE[j]] && isParamHE[rightHE[j]]) {
-              twinH(leftHE[j]) = rightHE[j];
-              twinH(rightHE[j]) = leftHE[j];
-              removedV.insert(HV(nextH(rightHE[j])));
-              HV(nextH(rightHE[j])) = HV(leftHE[j]);
-              HV(nextH(twinH(nextH(rightHE[j])))) = HV(leftHE[j]);
-            }
-            else
-              throw std::runtime_error(
-                  "libhedra:stitch_boundaries: This should not happened! Report a bug at: https://github.com/avaxman/libhedra/issues");
-          }
-
-          // merge edge ends
-          if (!isParamHE[leftHE[0]]) {
-            nextH(prevH(leftHE[0])) = nextH(rightHE[0]); //
-            prevH(nextH(rightHE[0])) = prevH(leftHE[0]);
-            //garbage collector
-            removedHE.insert(leftHE[0]);
-            removedHE.insert(rightHE[0]);
-            HV(nextH(rightHE[0])) = HV(leftHE[0]);
-
-          } else if (isParamHE[leftHE[0]]) {
-            twinH(leftHE[0]) = rightHE[0];
-            twinH(rightHE[0]) = leftHE[0];
-            removedV.insert(HV(nextH(rightHE[0])));
-            HV(nextH(rightHE[0])) = HV(leftHE[0]);
-
-          } else
-            throw std::runtime_error(
-                "libhedra:stitch_boundaries: This should not happened! Report a bug at: https://github.com/avaxman/libhedra/issues");
-
-          int last = leftHE.size() - 1;
-          if (!isParamHE[rightHE[last]]) {
-            nextH(prevH(rightHE[last])) = nextH(leftHE[last]);
-            prevH(nextH(leftHE[last])) = prevH(rightHE[last]);
-            removedHE.insert(rightHE[last]);
-            removedHE.insert(leftHE[last]);
-
-            HV(rightHE[last]) = HV(nextH(leftHE[last]));
-          } else if (isParamHE[rightHE[last]]) {
-            twinH(leftHE[last]) = rightHE[last];
-            twinH(rightHE[last]) = leftHE[last];
-
-            removedV.insert(HV(rightHE[last]));
-            HV(rightHE[last]) = HV(nextH(leftHE[last]));
-          } else
-            throw std::runtime_error(
-                "libhedra:stitch_boundaries: This should not happened! Report a bug at: https://github.com/avaxman/libhedra/issues");
-
-          /* removed virtual objects
-           *
-           */
-
-          //edges
-          for (auto he = removedHE.rbegin(); he != removedHE.rend(); he++) {
-            // skipe a rediscovered useless edge, well normally it should not happen
-            if (*he > HF.rows()) {
-              continue;
-            }
-            int numRows = HE2origEdges.size() - 1;
-
-            if (*he < numRows) {
-              HF.segment(*he, numRows - *he) = HF.segment(*he + 1, numRows - *he).eval();
-              oldHF.segment(*he, numRows - *he) = oldHF.segment(*he + 1, numRows - *he).eval();
-              HV.segment(*he, numRows - *he) = HV.segment(*he + 1, numRows - *he).eval();
-              nextH.segment(*he, numRows - *he) = nextH.segment(*he + 1, numRows - *he).eval();
-              twinH.segment(*he, numRows - *he) = twinH.segment(*he + 1, numRows - *he).eval();
-              prevH.segment(*he, numRows - *he) = prevH.segment(*he + 1, numRows - *he).eval();
-            }
-
-            HF.conservativeResize(numRows);
-            oldHF.conservativeResize(numRows);
-            HV.conservativeResize(numRows);
-            nextH.conservativeResize(numRows);
-            twinH.conservativeResize(numRows);
-            prevH.conservativeResize(numRows);
-
-            HE2origEdges.erase(HE2origEdges.cbegin() + (*he));
-            isParamHE.erase(isParamHE.cbegin() + (*he));
-
-            //update IDs
-            for (int k = 0; k < FH.rows(); k++)
-              if (FH(k) > *he)
-                FH(k)--;
-
-            for (int k = 0; k < VH.rows(); k++)
-              if (VH(k) > *he)
-                VH(k)--;
-              else if (VH(k) == *he && removedHE.find(*he) == removedHE.end())
-                throw std::runtime_error("libhedra:stitch_boundaries: bad ref. VH! Report a bug at: https://github.com/avaxman/libhedra/issues");
-
-            for (int k = 0; k < nextH.rows(); k++)
-              if (nextH(k) > *he)
-                nextH(k)--;
-              else if (nextH(k) == *he && removedHE.find(*he) == removedHE.end())
-                throw std::runtime_error("libhedra:stitch_boundaries: bad ref. nextH! Report a bug at: https://github.com/avaxman/libhedra/issues");
-
-            for (int k = 0; k < prevH.rows(); k++)
-              if (prevH(k) > *he)
-                prevH(k)--;
-              else if (prevH(k) == *he && removedHE.find(*he) == removedHE.end())
-                throw std::runtime_error("libhedra:stitch_boundaries: bad ref. prevH! Report a bug at: https://github.com/avaxman/libhedra/issues");
-
-            for (int k = 0; k < twinH.rows(); k++)
-              if (twinH(k) > *he)
-                twinH(k)--;
-              else if (twinH(k) == *he && removedHE.find(*he) == removedHE.end())
-                throw std::runtime_error("libhedra:stitch_boundaries: bad ref. twinH! Report a bug at: https://github.com/avaxman/libhedra/issues");
-
-            for (size_t k = 0; k < origEdges2HE.size(); k++) {
-              auto it = std::find(origEdges2HE[k].begin(), origEdges2HE[k].end(), *he);
-              if (it != origEdges2HE[k].end())
-                origEdges2HE[k].erase(it);
-              for (size_t h = 0; h < origEdges2HE[k].size(); h++)
-                if (origEdges2HE[k][h] > *he)
-                  origEdges2HE[k][h]--;
-            }
-          }
-
-          //vertices
-          for (auto vi = removedV.rbegin(); vi != removedV.rend(); vi++) {
-            //remove the row
-            int numRows = currV.rows() - 1;
-            if (*vi < numRows) {
-              currV.block(*vi, 0, numRows - *vi, 3) = currV.block(*vi + 1, 0, numRows - *vi, 3).eval();
-              VH.segment(*vi, numRows - *vi) = VH.segment(*vi + 1, numRows - *vi).eval();
-            }
-            currV.conservativeResize(numRows, 3);
-            VH.conservativeResize(numRows);
-            isParamVertex.erase(isParamVertex.begin() + *vi);
-
-            HE3D.erase(HE3D.begin() + *vi);
-            //update IDs
-            for (int k = 0; k < HV.rows(); k++) {
-              if (HV(k) > *vi)
-                HV(k)--;
-            }
-          }
-
-        }
-
-        //removed unreferenced faces
-        std::vector<int> hitFaces(FH.rows(), 0);
-        for (int k = 0; k < HF.rows(); k++)
-          hitFaces[HF(k)]++;
-
-        for (int fid = hitFaces.size() - 1; fid >= 0; fid--) {
-          if (hitFaces[fid])
-            continue;
-          //remove the row
-          int numRows = FH.rows() - 1;
-          if (fid < numRows)
-            FH.segment(fid, numRows - fid) = FH.segment(fid + 1, numRows - fid).eval();
-          FH.conservativeResize(numRows);
-          //update IDs
-          for (int k = 0; k < HF.rows(); k++)
-            if (HF(k) > fid)
-              HF(k)--;
-        }
-
-        //merge vertives
-        for(int k = 0; k < HV.rows(); k++)
-        {
-          for(int j = 0; j < HV.rows(); j++)
-          {
-            if(k == j)
-              continue;
-            if((currV.row(HV(j)) - currV.row(HV(k))).norm() < closeTolerance)
-              HV(j) = HV(k);
-          }
-        }
-
-        //removed unreferenced vertices
-        std::vector<int> hitVers(VH.rows(), 0);
-        for (int k = 0; k < HV.rows(); k++)
-          hitVers[HV(k)]++;
-
-        for (int vid = hitVers.size() - 1; vid >= 0; vid--) {
-          if (hitVers[vid] > 0)
-            continue;
-          //remove the row
-          int numRows = VH.rows() - 1;
-          if (vid < numRows)
-          {
-            currV.block(vid, 0, numRows - vid, 3) = currV.block(vid + 1, 0, numRows - vid, 3).eval();
-            VH.segment(vid, numRows - vid) = VH.segment(vid + 1, numRows - vid).eval();
-          }
-          currV.conservativeResize(numRows, 3);
-          VH.conservativeResize(numRows);
-          isParamVertex.erase(isParamVertex.begin() + vid);
-          //update IDs
-          for (int k = 0; k < HV.rows(); k++)
-            if (HV(k) > vid)
-              HV(k)--;
-        }
-      }
+    }
 
 
       IGL_INLINE void stitch_boundaries2(
@@ -941,7 +401,7 @@ namespace hedra
           std::vector<int> & HE2origEdges,
           std::vector<bool> & isParamHE,
           std::vector<int> & overlayFace2Tri,
-          const double closeTolerance = 10e-30) {
+          const double closeTolerance = 10e-6) {
         // create a map from the original edges to the half-edges
         std::vector<std::vector<int> > origEdges2HE(triEF.rows());
         for (int i = 0; i < HE2origEdges.size(); i++) {
@@ -1003,37 +463,69 @@ namespace hedra
 
           // garbage collector
           std::set<int> removedHE, removedV;
+          if(leftHE.size() > rightHE.size() || rightHE.size() - leftHE.size() > 1)
+            continue;
 
-          //if(rightHE.size() != leftHE.size())
-          //  continue;
+          std::multimap<int, int> left2right;
+          std::multimap<int, int> right2left;
+          find_edge_map(leftHE, rightHE, HE3D, HV, nextH, left2right);
+          //find_edge_map(rightHE, leftHE, HE3D, HV, nextH, right2left);
 
-          while(rightHE.size() < leftHE.size()) {
-            edge_reduction(leftHE, rightHE, currV, HV, HF, FH, nextH, prevH, twinH, removedHE, removedV, closeTolerance);
+         //resolve the lack of bijectivity by removing the shortest edges
+          std::vector<std::pair<int, double> > r2len;
+          for (int j = 0; j < rightHE.size(); j++) {
+            double tmp = (currV.row(HV(nextH(rightHE[j]))) - currV.row(HV(rightHE[j]))).norm();
+            r2len.emplace_back(j, tmp);
           }
+          std::stable_sort(r2len.begin(), r2len.end(),
+                           [](const std::pair<int, double> &a, const std::pair<int, double> &b) -> bool {
+                             return a.second > b.second;});
 
-
-          while(rightHE.size()  > leftHE.size()) {
-            edge_reduction(rightHE, leftHE, currV, HV, HF, FH, nextH, prevH, twinH, removedHE, removedV, closeTolerance);
+          while (r2len.size() > leftHE.size()) {
+            std::pair<int, double> last = r2len.back();
+            if (nextH(nextH(rightHE[last.first])) == prevH(rightHE[last.first])) {
+              remove_face(rightHE[last.first], currV, HV, HF, FH, nextH, prevH, twinH, removedHE, removedV);
+              rightHE.erase(rightHE.begin() + last.first);
+            } else {
+              contract_edge(rightHE[last.first], currV, HV, HF, FH, nextH, prevH, twinH, removedHE, removedV);
+              rightHE.erase(rightHE.begin() + last.first);
+            }
+            r2len.pop_back();
           }
-
 
           //find maching source vertices from left to right
           for (size_t j = 0; j < leftHE.size(); j++) {
-            twinH(leftHE[j]) = rightHE[j];
-            twinH(rightHE[j]) = leftHE[j];
+            auto l2r = left2right.equal_range(j);
+            if(l2r.first == l2r.second)
+              continue;
+            int idx = l2r.first->second;
+            if(idx != j)
+              continue;
 
-            int toRM = HV(nextH(rightHE[j]));
+            twinH(leftHE[j]) = rightHE[idx];
+            twinH(rightHE[idx]) = leftHE[j];
+
+            int toRM = HV(nextH(rightHE[idx]));
             int keep = HV(leftHE[j]);
+            removedV.insert(toRM);
             for(int k = 0; k < HV.rows(); k++)
               if(HV(k) == toRM)
                 HV(k) = keep;
+            //update the status
+            if(isParamVertex[toRM])
+              isParamVertex[keep] = true;
           }
 
-          int toRM = HV(rightHE.back());
-          int keep = HV(nextH(leftHE.back()));
+          //close up the zipping
+          int keep = HV(rightHE.back());
+          int toRM = HV(nextH(leftHE.back()));
+          removedV.insert(toRM);
           for(int k = 0; k < HV.rows(); k++)
             if(HV(k) == toRM)
               HV(k) = keep;
+          //update the status
+          if(isParamVertex[toRM])
+            isParamVertex[keep] = true;
 
           /* removed virtual objects
            *
@@ -1104,27 +596,6 @@ namespace hedra
                   origEdges2HE[k][h]--;
             }
           }
-
-          //vertices
-          for (auto vi = removedV.rbegin(); vi != removedV.rend(); vi++) {
-            //remove the row
-            int numRows = currV.rows() - 1;
-            if (*vi < numRows) {
-              currV.block(*vi, 0, numRows - *vi, 3) = currV.block(*vi + 1, 0, numRows - *vi, 3).eval();
-              VH.segment(*vi, numRows - *vi) = VH.segment(*vi + 1, numRows - *vi).eval();
-            }
-            currV.conservativeResize(numRows, 3);
-            VH.conservativeResize(numRows);
-            isParamVertex.erase(isParamVertex.begin() + *vi);
-
-            HE3D.erase(HE3D.begin() + *vi);
-            //update IDs
-            for (int k = 0; k < HV.rows(); k++) {
-              if (HV(k) > *vi)
-                HV(k)--;
-            }
-          }
-
         }
 
         //removed unreferenced faces
@@ -1145,6 +616,43 @@ namespace hedra
             if (HF(k) > fid)
               HF(k)--;
         }
+
+        //merge vertives
+        for(int k = 0; k < HV.rows(); k++)
+        {
+          for(int j = 0; j < HV.rows(); j++)
+          {
+            if(k == j)
+              continue;
+            if((currV.row(HV(j)) - currV.row(HV(k))).norm() < closeTolerance)
+              HV(j) = HV(k);
+          }
+        }
+
+        //removed unreferenced vertices
+        std::vector<int> hitVers(VH.rows(), 0);
+        for (int k = 0; k < HV.rows(); k++)
+          hitVers[HV(k)]++;
+
+        for (int vid = hitVers.size() - 1; vid >= 0; vid--) {
+          if (hitVers[vid] > 0)
+            continue;
+          //remove the row
+          int numRows = VH.rows() - 1;
+          if (vid < numRows)
+          {
+            currV.block(vid, 0, numRows - vid, 3) = currV.block(vid + 1, 0, numRows - vid, 3).eval();
+            VH.segment(vid, numRows - vid) = VH.segment(vid + 1, numRows - vid).eval();
+          }
+          currV.conservativeResize(numRows, 3);
+          VH.conservativeResize(numRows);
+          isParamVertex.erase(isParamVertex.begin() + vid);
+          //update IDs
+          for (int k = 0; k < HV.rows(); k++)
+            if (HV(k) > vid)
+              HV(k)--;
+        }
+
       }
 
 
