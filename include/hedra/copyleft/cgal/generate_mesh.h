@@ -11,6 +11,11 @@
 #include <vector>
 #include <set>
 
+
+#include <boost/config.hpp>
+#include <boost/graph/adjacency_list.hpp>
+#include <boost/graph/connected_components.hpp>
+
 #include <igl/igl_inline.h>
 #include <Eigen/Dense>
 #include <CGAL/basic.h>
@@ -36,7 +41,6 @@
 #include <CGAL/to_rational.h>
 #include <CGAL/Exact_integer.h>
 
-#include <CGAL/Root_of_traits.h>
 
 namespace hedra
 {
@@ -217,7 +221,7 @@ namespace hedra
         std::vector<Number> coordsX(3);
         std::vector<Number> coordsY(3);
 
-        auto sqrt_3 = CGAL::make_sqrt(Number(3));
+        auto sqrt_3 = CGAL::sqrt(Number(3));
 
         Eigen::MatrixXd facePC(3, UV.cols()); // PC.cols == 2
         for (int i = 0; i < 3; i++) {
@@ -381,6 +385,529 @@ namespace hedra
       }
     }
 
+    struct PointPair{
+        int Index1, Index2;
+        double Distance;
+
+        PointPair(int i1, int i2, double d):Index1(i1), Index2(i2), Distance(d){}
+        ~PointPair(){}
+
+        const bool operator<(const PointPair& pp) const {
+          if (Distance>pp.Distance) return false;
+          if (Distance<pp.Distance) return true;
+
+          if (Index1>pp.Index1) return false;
+          if (Index1<pp.Index1) return true;
+
+          if (Index2>pp.Index2) return false;
+          if (Index2<pp.Index2) return true;
+
+          return false;
+
+        }
+      };
+
+     void vertex_sets_match(vector<Point3D>& set1, vector<Point3D>& set2, std::vector<std::pair<int,int> > & result)
+      {
+        std::set<PointPair> pairSet;
+        for (int i = 0; i < set1.size(); i++)
+          for (int j = 0; j < set2.size(); j++)
+            pairSet.insert(PointPair(i, j, Norm(set1[i] - set2[j])));
+
+        //adding greedily legal connections until graph is full
+        vector<bool> set1Connect(set1.size(), false);
+        vector<bool> set2Connect(set2.size(), false);
+
+        int numConnected = 0;
+        for (auto ppi = pairSet.begin(); ppi != pairSet.end(); ppi++)
+        {
+          PointPair currPair = *ppi;
+          //checking legality - if any of one's former are connected to ones latters or vice versa
+          bool foundConflict = false;
+          for (int i = 0; i < result.size(); i++) {
+            if (((result[i].first > currPair.Index1) && (result[i].second < currPair.Index2)) ||
+                ((result[i].first < currPair.Index1) && (result[i].second > currPair.Index2))) {
+              foundConflict = true;
+              break;
+            }
+          }
+          if (foundConflict)
+            continue;
+
+          //otherwise this edge is legal, so add it
+          result.push_back(pair<int, int>(currPair.Index1, currPair.Index2));
+          if (!set1Connect[currPair.Index1]) numConnected++;
+          if (!set2Connect[currPair.Index2]) numConnected++;
+          set1Connect[currPair.Index1] = set2Connect[currPair.Index2] = true;
+          if (numConnected == set1.size() + set2.size())
+            break;  //all nodes are connected
+        }
+      }
+
+    void find_maching_vertices(const std::vector<std::vector<int> > & boundEdgesLeft,
+                               const std::vector<std::vector<int> > & boundEdgesRight,
+                               const Eigen::VectorXi & nextH,
+                               const std::vector<Point3D> & HE3D,
+                               const Eigen::VectorXi & HV,
+                               std::vector<std::pair<int, int> > & vertexMatches)
+    {
+      std::vector<std::vector<int> > vertexSetL(boundEdgesLeft.size()), vertexSetR(boundEdgesRight.size());
+        for (size_t i = 0; i < boundEdgesLeft.size(); i++) {
+          for (auto eid : boundEdgesLeft[i])
+            vertexSetL[i].push_back(HV(eid));
+          if (!boundEdgesLeft[i].empty())
+            vertexSetL[i].push_back(HV(nextH(boundEdgesLeft[i].back())));
+        }
+
+        for (size_t i = 0; i < boundEdgesRight.size(); i++) {
+          for (auto eid : boundEdgesRight[i])
+            vertexSetR[i].push_back(HV(eid));
+          if (!boundEdgesRight[i].empty())
+            vertexSetR[i].push_back(HV(nextH(boundEdgesRight[i].back())));
+        }
+
+        for (size_t i = 0; i < boundEdgesRight.size(); i++) {
+          std::vector<Point3D> pointSetL(vertexSetL[i].size());
+          std::vector<Point3D> pointSetR(vertexSetR[i].size());
+
+          for (size_t j = 0; j < pointSetL.size(); j++)
+            pointSetL[j] = HE3D[vertexSetL[i][j]];
+          for (size_t j = 0; j < pointSetR.size(); j++)
+            pointSetR[j] = HE3D[vertexSetR[i][j]];
+
+          std::vector<std::pair<int, int> > currMatches;
+          if ((!pointSetL.empty()) && (!pointSetR.empty()))
+            vertex_sets_match(pointSetL, pointSetR, currMatches);
+
+          for (size_t j = 0; j < currMatches.size(); j++) {
+            currMatches[j].first = vertexSetL[i][currMatches[j].first];
+            currMatches[j].second = vertexSetR[i][currMatches[j].second];
+          }
+          vertexMatches.insert(vertexMatches.end(), currMatches.begin(), currMatches.end());
+        }
+    }
+
+      struct TwinFinder{
+        int index;
+        int v1, v2;
+
+        TwinFinder(int i, int vv1, int vv2): index(i), v1(vv1), v2(vv2){}
+        ~TwinFinder(){}
+
+        const bool operator<(const TwinFinder& tf) const
+        {
+          if (v1<tf.v1) return false;
+          if (v1>tf.v1) return true;
+
+          if (v2<tf.v2) return false;
+          if (v2>tf.v2) return true;
+
+          return false;
+        }
+      };
+
+
+      void removeFace(const int findex,
+                      const int heindex,
+                      Eigen::VectorXi & HV,
+                      Eigen::VectorXi & VH,
+                      Eigen::VectorXi & HF,
+                      Eigen::VectorXi & FH,
+                      Eigen::VectorXi & twinH,
+                      Eigen::VectorXi & nextH,
+                      Eigen::VectorXi & prevH,
+                      std::vector<bool> & validHE,
+                      std::vector<bool> & validV,
+                      std::vector<bool> & validF)
+      {
+        int leftVertex = HV(heindex);
+        int hebegin = heindex;
+        int heiterate = hebegin;
+
+        validF[findex] = false;
+        std::vector<int> replaceOrigins;
+        do{
+          validHE[heiterate] = false;
+          if (HF(heiterate) != findex)
+            throw std::runtime_error("Wrong face!");
+          if (HV(heiterate) != leftVertex) {
+            validV[HV(heiterate)] = false;
+            replaceOrigins.push_back(HV(heiterate));
+          }
+          if (twinH[heiterate] == -1 ) {
+            heiterate = nextH(heiterate);
+            continue;
+          }
+          int reduceEdge = twinH(heiterate);
+          validHE[reduceEdge] = false;
+          prevH(nextH(reduceEdge)) = prevH(reduceEdge);
+          nextH(prevH(reduceEdge)) = nextH(reduceEdge);
+
+          FH(HF(reduceEdge)) = nextH(reduceEdge);
+          VH(leftVertex) = nextH(reduceEdge);
+
+          heiterate = nextH(heiterate);
+        } while (heiterate != hebegin);
+
+        for (int i = 0; i < HV.rows(); i++)
+          for (size_t j = 0; j < replaceOrigins.size(); j++)
+            if (HV(i) == replaceOrigins[j]) {
+              HV(i) = leftVertex;
+            }
+
+        //in case there are leftovers
+        if (!validHE[VH(leftVertex)])
+          validV[leftVertex] = false;
+      }
+
+      void removeEdge(const int heindex,
+                      Eigen::VectorXi & HV,
+                      Eigen::VectorXi & VH,
+                      Eigen::VectorXi & HF,
+                      Eigen::VectorXi & FH,
+                      Eigen::VectorXi & twinH,
+                      Eigen::VectorXi & nextH,
+                      Eigen::VectorXi & prevH,
+                      std::vector<bool> & validHE,
+                      std::vector<bool> & validV,
+                      std::vector<bool> & validF
+      )
+      {
+        if (twinH(heindex) != -1) {
+          int ebegin = twinH(heindex);
+          int ecurr = ebegin;
+          int counter = 0;
+          do {
+            counter++;
+            ecurr = nextH(ecurr);
+          } while (ebegin != ecurr);
+          if(counter <= 3) {
+            removeFace(HF(twinH(heindex)), twinH(heindex), HV, VH, HF, FH, twinH, nextH, prevH, validHE, validV, validF);
+            return;
+          }
+        }
+
+        validHE[heindex] = false;
+        prevH(nextH(heindex)) = prevH(heindex);
+        nextH(prevH(heindex)) = nextH(heindex);
+
+        VH(HV(heindex)) = nextH(heindex);
+        int leftVertex = HV(heindex);
+        int removeVertex = HV(nextH(heindex));
+        validV[removeVertex] = false;
+        HV(nextH(heindex)) = HV(heindex);
+        FH(HF(heindex)) = nextH(heindex);
+
+        if (twinH(heindex) != -1) {
+          validHE[twinH(heindex)] = false;
+          prevH(nextH(twinH(heindex))) = prevH(twinH(heindex));
+          nextH(prevH(twinH(heindex))) = nextH(twinH(heindex));
+          HV(nextH(twinH(heindex))) = leftVertex;
+          FH(HF(twinH(heindex))) = nextH(twinH(heindex));
+        }
+
+        for (int i = 0; i < HV.rows(); i++)
+          if (HV(i) == removeVertex)
+            HV(i) = leftVertex;
+      }
+
+     void graph_verification(const std::vector<std::vector<int> > & boundEdgesLeft,
+                             const std::vector<std::vector<int> > & boundEdgesRight,
+                             Eigen::MatrixXd & currV,
+                             Eigen::VectorXi & nextH,
+                             Eigen::VectorXi & prevH,
+                             Eigen::VectorXi & twinH,
+                             Eigen::VectorXi & HV,
+                             Eigen::VectorXi & VH,
+                             Eigen::VectorXi & HF,
+                             Eigen::VectorXi & FH,
+                             std::vector<std::pair<int, int> > & vertexMatches,
+                             std::vector<Point3D> & HE3D,
+                             std::vector<int> & transVertices,
+                             std::vector<bool> & validHE, std::vector<bool> & validV, std::vector<bool> & validF)
+     {
+       typedef boost::adjacency_list <boost::vecS, boost::vecS, boost::undirectedS> Graph;
+       Graph MatchGraph;
+
+       for (size_t i = 0; i < HE3D.size(); i++)
+         boost::add_vertex(MatchGraph);
+       for (size_t i = 0; i < vertexMatches.size(); i++)
+         boost::add_edge(vertexMatches[i].first, vertexMatches[i].second, MatchGraph);
+
+       double maxDist = -327670000.0;
+       for (size_t i = 0; i < vertexMatches.size(); i++)
+         maxDist = std::max(maxDist, CGAL::to_double((HE3D[vertexMatches[i].first] - HE3D[vertexMatches[i].second]).squared_length()));
+
+       int numNewVertices = boost::connected_components(MatchGraph, &transVertices[0]);
+
+       //adding other vertex to the degeneration if needed
+       bool thereisChange;
+       do{
+         thereisChange = false;
+         for (int i = 0; i < twinH.size(); i++) {
+           if (!validHE[i] || twinH(i) != -1)
+             continue;
+           if (transVertices[HV(i)] != transVertices[HV(nextH(i))])
+             continue;  //this edge is OK
+
+           int ebegin = i;
+           int ecurr = ebegin;
+           std::vector<int> FV;
+           do {
+             FV.push_back(HV(ecurr));
+             ecurr = nextH(ecurr);
+           } while (ebegin != ecurr);
+
+           if (FV.size() <= 3) {
+             for (size_t j = 0; j < FV.size(); j++) {
+               if (transVertices[FV[j]] != transVertices[HV(i)]){
+                 boost::add_edge(FV[j], HV(i), MatchGraph);
+                 thereisChange = true;
+               }
+             }
+           }
+         }
+
+         if (thereisChange){
+           transVertices.clear();
+           transVertices.resize(HE3D.size());
+           numNewVertices = boost::connected_components(MatchGraph, &transVertices[0]);
+         }
+       }while (thereisChange);
+
+       //removing edges (and consequent faces) which will degenerate
+       for (int i = 0; i < twinH.rows(); i++) {
+         if (!validHE[i] || twinH(i) != -1)
+           continue;
+         if (transVertices[HV(i)] != transVertices[HV(nextH(i))])
+           continue;  //this edge is OK
+
+         int ebegin = i;
+         int ecurr = ebegin;
+         int counter = 0;
+         do {
+           counter++;
+           ecurr = nextH(ecurr);
+         } while (ebegin != ecurr);
+
+         if (counter <= 3)
+           removeFace(HF(i), i, HV, VH, HF, FH, twinH, nextH, prevH, validHE, validV, validF);
+         else
+           removeEdge(i, HV, VH, HF, FH, twinH, nextH, prevH, validHE, validV, validF);
+       }
+
+       std::vector<Point3D> newVertices(numNewVertices);
+       for (size_t i = 0; i < HE3D.size(); i++) {
+         if (!validV[i])
+           continue;
+         Point3D newVertex = HE3D[i];
+         newVertices[transVertices[i]] = newVertex;
+       }
+       HE3D = newVertices;
+
+       for (int i = 0; i < HV.rows(); i++) {
+         HV(i) = transVertices[HV(i)];
+         if (validHE[i])
+           VH(HV(i)) = i;
+       }
+     }
+
+     void joinFace(const int heindex,
+      Eigen::VectorXi & twinH,
+      Eigen::VectorXi & prevH,
+      Eigen::VectorXi & nextH,
+      Eigen::VectorXi & HF,
+      Eigen::VectorXi & FH,
+      Eigen::VectorXi & HV,
+      Eigen::VectorXi & VH,
+      std::vector<bool> & validHE, std::vector<bool> & validV, std::vector<bool> & validF)
+    {
+      if (twinH(heindex) == -1)
+          return;
+
+        int fid0 = HF(heindex);
+        int fid1 = HF(twinH(heindex));
+
+        //check if a lonely edge
+        if ((prevH(heindex) == twinH(heindex)) && (nextH(heindex) == twinH(heindex))) {
+          validHE[heindex] = validHE[heindex] = false;
+          validV[HV(heindex)] = validV[HV(twinH(heindex))] = false;
+          if ((FH(HF(heindex)) == heindex) || (twinH((FH(HF(heindex)))) == heindex)) {
+            for (size_t i = 0; i < validHE.size(); i++) {
+              if (!validHE[i])
+                continue;
+              if (HF(i) == HF(heindex)) {
+                FH(HF(heindex)) = i;
+                break;
+              }
+            }
+          }
+          return;
+        }
+
+        //check if spike edge
+        if ((prevH(heindex) == twinH(heindex)) || (nextH(heindex) == twinH(heindex))) {
+          int closeEdge = heindex;
+          if (prevH(heindex) == twinH(heindex))
+            closeEdge = twinH(heindex);
+
+          validHE[closeEdge] = validHE[twinH(closeEdge)] = false;
+          VH(HV(closeEdge)) = nextH(twinH(closeEdge));
+          FH(fid0) = prevH(closeEdge);
+
+          nextH(prevH(closeEdge)) = nextH(twinH(closeEdge));
+          prevH(nextH(twinH(closeEdge))) = prevH(closeEdge);
+          validV[HV(twinH(closeEdge))] = false;
+          return;
+        }
+
+        HF(fid0) = nextH(heindex);
+        if (fid0 != fid1)
+          validF[fid1] = false;
+
+        validHE[heindex] = validHE[twinH(heindex)] = false;
+
+        prevH(nextH(heindex)) = prevH(twinH(heindex));
+        nextH(prevH(twinH(heindex))) = nextH(heindex);
+        prevH(nextH(twinH(heindex))) = prevH(heindex);
+        nextH(prevH(heindex)) = nextH(twinH(heindex));
+
+        VH(HV(heindex)) = nextH(twinH(heindex));
+        VH(HV(nextH(heindex))) = nextH(heindex);
+
+        //all other floating halfedges should renounce this one
+        for (int i = 0; i < HF.rows(); i++)
+          if (HF(i) == fid1)
+            HF(i) = fid0;
+      }
+
+//edge has to be sourcing a 2-valence vertex!!
+      void unifyEdges(const int heindex,
+                      Eigen::VectorXi & twinH,
+                      Eigen::VectorXi & prevH,
+                      Eigen::VectorXi & nextH,
+                      Eigen::VectorXi & HF,
+                      Eigen::VectorXi & FH,
+                      Eigen::VectorXi & HV,
+                      Eigen::VectorXi & VH,
+                      std::vector<bool> & validHE, std::vector<bool> & validV)
+      {
+        //adjusting source
+        validV[HV(heindex)] = false;
+        HV(heindex) = HV(prevH(heindex));
+        VH(HV(heindex)) = heindex;
+        FH(HF(heindex)) = nextH(heindex);
+
+        //adjusting halfedges
+        validHE[prevH(heindex)] = false;
+        prevH(heindex) = prevH(prevH(heindex));
+        nextH(prevH(heindex)) = heindex;
+
+        //adjusting twin, if exists
+        if (twinH(heindex) != -1) {
+          validHE[nextH(twinH(heindex))] = false;
+          nextH(twinH(heindex)) = nextH(nextH(twinH(heindex)));
+          prevH(nextH(twinH(heindex))) = twinH(heindex);
+          FH(HF(twinH(heindex))) = nextH(twinH(heindex));
+        }
+      }
+
+      void cleanMesh(const std::vector<bool> & validHE,
+                     const std::vector<bool> & validV,
+                     const std::vector<bool> & validF,
+                     Eigen::VectorXi & twinH,
+                     Eigen::VectorXi & prevH,
+                     Eigen::VectorXi & nextH,
+                     Eigen::MatrixXd & currV,
+                     Eigen::VectorXi & HF,
+                     Eigen::VectorXi & FH,
+                     Eigen::VectorXi & HV,
+                     Eigen::VectorXi & VH,
+                     std::vector<bool> & isParamVertex,
+                     std::vector<int> & HE2origEdges,
+                     std::vector<bool> & isParamHE)
+      {
+        //edges
+        for (int hid = validHE.size() - 1; hid >= 0; hid--) {
+          // skipe a rediscovered useless edge, well normally it should not happen
+          if (validHE[hid])
+            continue;
+          int numRows = HE2origEdges.size() - 1;
+
+          if (hid < numRows) {
+            HF.segment(hid, numRows - hid) = HF.segment(hid + 1, numRows - hid).eval();
+            HV.segment(hid, numRows - hid) = HV.segment(hid + 1, numRows - hid).eval();
+            nextH.segment(hid, numRows - hid) = nextH.segment(hid + 1, numRows - hid).eval();
+            twinH.segment(hid, numRows - hid) = twinH.segment(hid + 1, numRows - hid).eval();
+            prevH.segment(hid, numRows - hid) = prevH.segment(hid + 1, numRows - hid).eval();
+          }
+
+          HF.conservativeResize(numRows);
+          HV.conservativeResize(numRows);
+          nextH.conservativeResize(numRows);
+          twinH.conservativeResize(numRows);
+          prevH.conservativeResize(numRows);
+
+          HE2origEdges.erase(HE2origEdges.cbegin() + hid);
+          isParamHE.erase(isParamHE.cbegin() + hid);
+
+          //update IDs
+          for (int k = 0; k < FH.rows(); k++)
+            if (FH(k) > hid)
+              FH(k)--;
+
+          for (int k = 0; k < VH.rows(); k++)
+            if (VH(k) > hid)
+              VH(k)--;
+
+          for (int k = 0; k < nextH.rows(); k++)
+            if (nextH(k) > hid)
+              nextH(k)--;
+
+          for (int k = 0; k < prevH.rows(); k++)
+            if (prevH(k) > hid)
+              prevH(k)--;
+
+          for (int k = 0; k < twinH.rows(); k++)
+            if (twinH(k) > hid)
+              twinH(k)--;
+      }
+
+        //removed unreferenced faces
+        for (int fid = validF.size() - 1; fid >= 0; fid--) {
+          if (validF[fid])
+            continue;
+          //remove the row
+          int numRows = FH.rows() - 1;
+          if (fid < numRows)
+            FH.segment(fid, numRows - fid) = FH.segment(fid + 1, numRows - fid).eval();
+          FH.conservativeResize(numRows);
+          //update IDs
+          for (int k = 0; k < HF.rows(); k++)
+            if (HF(k) > fid)
+              HF(k)--;
+        }
+
+        //removed unreferenced vertices
+        for (int vid = validV.size() - 1; vid >= 0; vid--) {
+          if (validV[vid] > 0)
+            continue;
+          //remove the row
+          int numRows = VH.rows() - 1;
+          if (vid < numRows)
+          {
+            currV.block(vid, 0, numRows - vid, 3) = currV.block(vid + 1, 0, numRows - vid, 3).eval();
+            VH.segment(vid, numRows - vid) = VH.segment(vid + 1, numRows - vid).eval();
+          }
+          currV.conservativeResize(numRows, 3);
+          VH.conservativeResize(numRows);
+          isParamVertex.erase(isParamVertex.begin() + vid);
+          //update IDs
+          for (int k = 0; k < HV.rows(); k++)
+            if (HV(k) > vid)
+              HV(k)--;
+        }
+      }
 
       IGL_INLINE void stitch_boundaries2(
           std::vector<Point3D> & HE3D,
@@ -409,8 +936,9 @@ namespace hedra
             continue;
           origEdges2HE[HE2origEdges[i]].push_back(i);
         }
-        Eigen::VectorXi oldHF = HF;
+        std::vector< std::vector<int> > boundEdgesLeft(triEF.rows()), boundEdgesRight(triEF.rows());
 
+        std::vector<bool> validHE(HV.rows(), true), validV(HE3D.size(), true), validF(FH.rows(), true);
 
         //for every original inner edge, stitching up boundary (original boundary edges don't have any action item)
         for (int i = 0; i < triInnerEdges.size(); i++) {
@@ -419,13 +947,11 @@ namespace hedra
           int leftFace = triEF(currEdge, 1);
           int rightFace = triEF(currEdge, 0);
 
-          std::cout << leftFace << " " << rightFace << std::endl;
-
           std::vector<int> leftHE, rightHE;
           for (size_t k = 0; k < origEdges2HE[currEdge].size(); k++) {
-            if (overlayFace2Tri[oldHF(origEdges2HE[currEdge][k])] == leftFace) {
+            if (overlayFace2Tri[HF(origEdges2HE[currEdge][k])] == leftFace) {
               leftHE.push_back(origEdges2HE[currEdge][k]);
-            } else if (overlayFace2Tri[oldHF(origEdges2HE[currEdge][k])] == rightFace) {
+            } else if (overlayFace2Tri[HF(origEdges2HE[currEdge][k])] == rightFace) {
               rightHE.push_back(origEdges2HE[currEdge][k]);
             } else
               throw std::runtime_error(
@@ -460,199 +986,59 @@ namespace hedra
             for (size_t k = 0; k < leftHE.size(); k++)
               std::swap(leftHE[k], rightHE[k]);
           }
+          boundEdgesLeft[i].insert(boundEdgesLeft[i].end(), leftHE.begin(), leftHE.end());
+          boundEdgesRight[i].insert(boundEdgesRight[i].end(), rightHE.begin(), rightHE.end());
+        }
+        // match vertives
+        std::vector<std::pair<int, int> > vertexMatches;
+        find_maching_vertices(boundEdgesLeft, boundEdgesRight, nextH, HE3D,HV, vertexMatches);
 
-          // garbage collector
-          std::set<int> removedHE, removedV;
-          if(leftHE.size() > rightHE.size() || rightHE.size() - leftHE.size() > 1)
+        std::vector<int> transVertices(HE3D.size());
+        graph_verification(boundEdgesLeft, boundEdgesRight, currV, nextH, prevH, twinH, HV, VH, HF, FH, vertexMatches, HE3D,transVertices, validHE, validV, validF);
+
+        //twinning up edges
+        std::set<TwinFinder> twinning;
+        for (int i = 0; i < twinH.rows(); i++) {
+          if (twinH(i) != -1 || !validHE[i])
             continue;
 
-          std::multimap<int, int> left2right;
-          std::multimap<int, int> right2left;
-          find_edge_map(leftHE, rightHE, HE3D, HV, nextH, left2right);
-          //find_edge_map(rightHE, leftHE, HE3D, HV, nextH, right2left);
-
-         //resolve the lack of bijectivity by removing the shortest edges
-          std::vector<std::pair<int, double> > r2len;
-          for (int j = 0; j < rightHE.size(); j++) {
-            double tmp = (currV.row(HV(nextH(rightHE[j]))) - currV.row(HV(rightHE[j]))).norm();
-            r2len.emplace_back(j, tmp);
-          }
-          std::stable_sort(r2len.begin(), r2len.end(),
-                           [](const std::pair<int, double> &a, const std::pair<int, double> &b) -> bool {
-                             return a.second > b.second;});
-
-          while (r2len.size() > leftHE.size()) {
-            std::pair<int, double> last = r2len.back();
-            if (nextH(nextH(rightHE[last.first])) == prevH(rightHE[last.first])) {
-              remove_face(rightHE[last.first], currV, HV, HF, FH, nextH, prevH, twinH, removedHE, removedV);
-              rightHE.erase(rightHE.begin() + last.first);
-            } else {
-              contract_edge(rightHE[last.first], currV, HV, HF, FH, nextH, prevH, twinH, removedHE, removedV);
-              rightHE.erase(rightHE.begin() + last.first);
-            }
-            r2len.pop_back();
-          }
-
-          //find maching source vertices from left to right
-          for (size_t j = 0; j < leftHE.size(); j++) {
-            auto l2r = left2right.equal_range(j);
-            if(l2r.first == l2r.second)
-              continue;
-            int idx = l2r.first->second;
-            if(idx != j)
-              continue;
-
-            twinH(leftHE[j]) = rightHE[idx];
-            twinH(rightHE[idx]) = leftHE[j];
-
-            int toRM = HV(nextH(rightHE[idx]));
-            int keep = HV(leftHE[j]);
-            removedV.insert(toRM);
-            for(int k = 0; k < HV.rows(); k++)
-              if(HV(k) == toRM)
-                HV(k) = keep;
-            //update the status
-            if(isParamVertex[toRM])
-              isParamVertex[keep] = true;
-          }
-
-          //close up the zipping
-          int keep = HV(rightHE.back());
-          int toRM = HV(nextH(leftHE.back()));
-          removedV.insert(toRM);
-          for(int k = 0; k < HV.rows(); k++)
-            if(HV(k) == toRM)
-              HV(k) = keep;
-          //update the status
-          if(isParamVertex[toRM])
-            isParamVertex[keep] = true;
-
-          /* removed virtual objects
-           *
-           */
-
-          //edges
-          for (auto he = removedHE.rbegin(); he != removedHE.rend(); he++) {
-            // skipe a rediscovered useless edge, well normally it should not happen
-            if (*he > HF.rows()) {
-              continue;
-            }
-            int numRows = HE2origEdges.size() - 1;
-
-            if (*he < numRows) {
-              HF.segment(*he, numRows - *he) = HF.segment(*he + 1, numRows - *he).eval();
-              oldHF.segment(*he, numRows - *he) = oldHF.segment(*he + 1, numRows - *he).eval();
-              HV.segment(*he, numRows - *he) = HV.segment(*he + 1, numRows - *he).eval();
-              nextH.segment(*he, numRows - *he) = nextH.segment(*he + 1, numRows - *he).eval();
-              twinH.segment(*he, numRows - *he) = twinH.segment(*he + 1, numRows - *he).eval();
-              prevH.segment(*he, numRows - *he) = prevH.segment(*he + 1, numRows - *he).eval();
-            }
-
-            HF.conservativeResize(numRows);
-            oldHF.conservativeResize(numRows);
-            HV.conservativeResize(numRows);
-            nextH.conservativeResize(numRows);
-            twinH.conservativeResize(numRows);
-            prevH.conservativeResize(numRows);
-
-            HE2origEdges.erase(HE2origEdges.cbegin() + (*he));
-            isParamHE.erase(isParamHE.cbegin() + (*he));
-
-            //update IDs
-            for (int k = 0; k < FH.rows(); k++)
-              if (FH(k) > *he)
-                FH(k)--;
-
-            for (int k = 0; k < VH.rows(); k++)
-              if (VH(k) > *he)
-                VH(k)--;
-              else if (VH(k) == *he && removedHE.find(*he) == removedHE.end())
-                throw std::runtime_error("libhedra:stitch_boundaries: bad ref. VH! Report a bug at: https://github.com/avaxman/libhedra/issues");
-
-            for (int k = 0; k < nextH.rows(); k++)
-              if (nextH(k) > *he)
-                nextH(k)--;
-              else if (nextH(k) == *he && removedHE.find(*he) == removedHE.end())
-                throw std::runtime_error("libhedra:stitch_boundaries: bad ref. nextH! Report a bug at: https://github.com/avaxman/libhedra/issues");
-
-            for (int k = 0; k < prevH.rows(); k++)
-              if (prevH(k) > *he)
-                prevH(k)--;
-              else if (prevH(k) == *he && removedHE.find(*he) == removedHE.end())
-                throw std::runtime_error("libhedra:stitch_boundaries: bad ref. prevH! Report a bug at: https://github.com/avaxman/libhedra/issues");
-
-            for (int k = 0; k < twinH.rows(); k++)
-              if (twinH(k) > *he)
-                twinH(k)--;
-              else if (twinH(k) == *he && removedHE.find(*he) == removedHE.end())
-                throw std::runtime_error("libhedra:stitch_boundaries: bad ref. twinH! Report a bug at: https://github.com/avaxman/libhedra/issues");
-
-            for (size_t k = 0; k < origEdges2HE.size(); k++) {
-              auto it = std::find(origEdges2HE[k].begin(), origEdges2HE[k].end(), *he);
-              if (it != origEdges2HE[k].end())
-                origEdges2HE[k].erase(it);
-              for (size_t h = 0; h < origEdges2HE[k].size(); h++)
-                if (origEdges2HE[k][h] > *he)
-                  origEdges2HE[k][h]--;
-            }
+          auto twinit = twinning.find(TwinFinder(0, HV(nextH(i)), HV(i)));
+          if (twinit != twinning.end())  {
+            twinH(twinit->index) = i;
+            twinH(i) = twinit->index;
+            twinning.erase(*twinit);
+          } else {
+            twinning.insert(TwinFinder(i,HV(i), HV(nextH(i))));
           }
         }
 
-        //removed unreferenced faces
-        std::vector<int> hitFaces(FH.rows(), 0);
-        for (int k = 0; k < HF.rows(); k++)
-          hitFaces[HF(k)]++;
-
-        for (int fid = hitFaces.size() - 1; fid >= 0; fid--) {
-          if (hitFaces[fid])
-            continue;
-          //remove the row
-          int numRows = FH.rows() - 1;
-          if (fid < numRows)
-            FH.segment(fid, numRows - fid) = FH.segment(fid + 1, numRows - fid).eval();
-          FH.conservativeResize(numRows);
-          //update IDs
-          for (int k = 0; k < HF.rows(); k++)
-            if (HF(k) > fid)
-              HF(k)--;
-        }
-
-        //merge vertives
-        for(int k = 0; k < HV.rows(); k++)
-        {
-          for(int j = 0; j < HV.rows(); j++)
-          {
-            if(k == j)
-              continue;
-            if((currV.row(HV(j)) - currV.row(HV(k))).norm() < closeTolerance)
-              HV(j) = HV(k);
+        for (size_t i = 0;i < validHE.size(); i++){
+          if (!isParamHE[i] && validHE[i]) {
+            joinFace(i, twinH, prevH, nextH, HF, FH, HV, VH, validHE, validV, validF);
           }
         }
 
-        //removed unreferenced vertices
-        std::vector<int> hitVers(VH.rows(), 0);
-        for (int k = 0; k < HV.rows(); k++)
-          hitVers[HV(k)]++;
+        //unifying chains of edges
+        //counting valences
+        std::vector<int> valences(HE3D.size(), 0);
 
-        for (int vid = hitVers.size() - 1; vid >= 0; vid--) {
-          if (hitVers[vid] > 0)
-            continue;
-          //remove the row
-          int numRows = VH.rows() - 1;
-          if (vid < numRows)
-          {
-            currV.block(vid, 0, numRows - vid, 3) = currV.block(vid + 1, 0, numRows - vid, 3).eval();
-            VH.segment(vid, numRows - vid) = VH.segment(vid + 1, numRows - vid).eval();
+        for (size_t i = 0; i < validHE.size(); i++) {
+          if (validHE[i]) {
+            valences[HV(i)]++;
+            if (twinH(i) == -1)  //should account for the target as well
+              valences[HV(nextH(i))]++;
           }
-          currV.conservativeResize(numRows, 3);
-          VH.conservativeResize(numRows);
-          isParamVertex.erase(isParamVertex.begin() + vid);
-          //update IDs
-          for (int k = 0; k < HV.rows(); k++)
-            if (HV(k) > vid)
-              HV(k)--;
         }
 
+        for (size_t i = 0; i < valences.size(); i++)
+          if (validV[i] && valences[i] < 2)
+            validV[i] = false;
+
+        for (size_t i = 0; i < valences.size(); i++)
+          if (validV[i] && valences[i] <= 2)
+            unifyEdges(VH(i), twinH, prevH, nextH, HF, FH, HV, VH, validHE, validV);
+
+        cleanMesh(validHE, validV, validF, twinH, prevH, nextH, currV, HF, FH, HV, VH, isParamVertex, HE2origEdges, isParamHE);
       }
 
 

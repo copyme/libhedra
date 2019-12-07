@@ -71,7 +71,7 @@ namespace hedra
         v=v/sqrt(squared_distance(Point3D(0,0,0)+v,Point3D(0,0,0)));
       }
 
-      inline Number norm(const Vector3D &v){return sqrt(squared_distance(Point3D(0,0,0)+v,Point3D(0,0,0)));}
+      inline double Norm(const Vector3D &v){return CGAL::to_double(CGAL::sqrt(squared_distance(Point3D(0,0,0)+v,Point3D(0,0,0))));}
       
     }
   }
