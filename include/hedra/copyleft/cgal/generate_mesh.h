@@ -970,17 +970,17 @@ namespace hedra
         std::vector<bool> validHE(HV.rows(), true), validV(HE3D.size(), true), validF(FH.rows(), true);
 
         //for every original inner edge, stitching up boundary (original boundary edges don't have any action item)
-        for (int i = 0; i < triEF.rows(); i++) {
+        for (int i = 0; i < triInnerEdges.rows(); i++) {
           //first sorting to left and right edges according to faces
-          int currEdge = i;//triInnerEdges(i);
+          int currEdge = triInnerEdges(i);
           int leftFace = triEF(currEdge, 1);
           int rightFace = triEF(currEdge, 0);
 
           std::vector<int> leftHE, rightHE;
           for (size_t k = 0; k < origEdges2HE[currEdge].size(); k++) {
-            if (leftFace != -1 && overlayFace2Tri[HF(origEdges2HE[currEdge][k])] == leftFace) {
+            if (overlayFace2Tri[HF(origEdges2HE[currEdge][k])] == leftFace) {
               leftHE.push_back(origEdges2HE[currEdge][k]);
-            } else if (rightFace != -1 && overlayFace2Tri[HF(origEdges2HE[currEdge][k])] == rightFace) {
+            } else if (overlayFace2Tri[HF(origEdges2HE[currEdge][k])] == rightFace) {
               rightHE.push_back(origEdges2HE[currEdge][k]);
             } else
               throw std::runtime_error(
@@ -1043,31 +1043,31 @@ namespace hedra
           }
         }
 
-        for (size_t i = 0;i < validHE.size(); i++){
-          if (!isParamHE[i] && validHE[i]) {
-            joinFace(i, twinH, prevH, nextH, HF, FH, HV, VH, validHE, validV, validF);
-          }
-        }
-
-        //unifying chains of edges
-        //counting valences
-        std::vector<int> valences(HE3D.size(), 0);
-
-        for (size_t i = 0; i < validHE.size(); i++) {
-          if (validHE[i]) {
-            valences[HV(i)]++;
-            if (twinH(i) == -1)  //should account for the target as well
-              valences[HV(nextH(i))]++;
-          }
-        }
-
-        for (size_t i = 0; i < valences.size(); i++)
-          if (validV[i] && valences[i] < 2)
-            validV[i] = false;
-
-        for (size_t i = 0; i < valences.size(); i++)
-          if (validV[i] && valences[i] <= 2)
-            unifyEdges(VH(i), twinH, prevH, nextH, HF, FH, HV, VH, validHE, validV);
+//        for (size_t i = 0;i < validHE.size(); i++){
+//          if (!isParamHE[i] && validHE[i]) {
+//            joinFace(i, twinH, prevH, nextH, HF, FH, HV, VH, validHE, validV, validF);
+//          }
+//        }
+//
+//        //unifying chains of edges
+//        //counting valences
+//        std::vector<int> valences(HE3D.size(), 0);
+//
+//        for (size_t i = 0; i < validHE.size(); i++) {
+//          if (validHE[i]) {
+//            valences[HV(i)]++;
+//            if (twinH(i) == -1)  //should account for the target as well
+//              valences[HV(nextH(i))]++;
+//          }
+//        }
+//
+//        for (size_t i = 0; i < valences.size(); i++)
+//          if (validV[i] && valences[i] < 2)
+//            validV[i] = false;
+//
+//        for (size_t i = 0; i < valences.size(); i++)
+//          if (validV[i] && valences[i] <= 2)
+//            unifyEdges(VH(i), twinH, prevH, nextH, HF, FH, HV, VH, validHE, validV);
 
         cleanMesh(validHE, validV, validF, twinH, prevH, nextH, currV, HF, FH, HV, VH, isParamVertex, HE2origEdges, isParamHE);
 
