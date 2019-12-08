@@ -407,7 +407,7 @@ namespace hedra
         }
       };
 
-     void vertex_sets_match(vector<Point3D>& set1, vector<Point3D>& set2, std::vector<std::pair<int,int> > & result)
+     void vertex_sets_match(const vector<Point3D>& set1, const vector<Point3D>& set2, std::vector<std::pair<int,int> > & result)
       {
         std::set<PointPair> pairSet;
         for (int i = 0; i < set1.size(); i++)
@@ -431,8 +431,8 @@ namespace hedra
               break;
             }
           }
-          if (foundConflict)
-            continue;
+//          if (foundConflict)
+//            continue;
 
           //otherwise this edge is legal, so add it
           result.push_back(pair<int, int>(currPair.Index1, currPair.Index2));
@@ -465,6 +465,7 @@ namespace hedra
           if (!boundEdgesRight[i].empty())
             vertexSetR[i].push_back(HV(nextH(boundEdgesRight[i].back())));
         }
+
 
         for (size_t i = 0; i < boundEdgesRight.size(); i++) {
           std::vector<Point3D> pointSetL(vertexSetL[i].size());
@@ -624,6 +625,7 @@ namespace hedra
                              std::vector<std::pair<int, int> > & vertexMatches,
                              std::vector<Point3D> & HE3D,
                              std::vector<int> & transVertices,
+                             std::vector<bool> & isParamVertex,
                              std::vector<bool> & validHE, std::vector<bool> & validV, std::vector<bool> & validF)
      {
        typedef boost::adjacency_list <boost::vecS, boost::vecS, boost::undirectedS> Graph;
@@ -634,10 +636,6 @@ namespace hedra
        for (size_t i = 0; i < vertexMatches.size(); i++)
          boost::add_edge(vertexMatches[i].first, vertexMatches[i].second, MatchGraph);
 
-       double maxDist = -327670000.0;
-       for (size_t i = 0; i < vertexMatches.size(); i++)
-         maxDist = std::max(maxDist, CGAL::to_double((HE3D[vertexMatches[i].first] - HE3D[vertexMatches[i].second]).squared_length()));
-
        int numNewVertices = boost::connected_components(MatchGraph, &transVertices[0]);
 
        //adding other vertex to the degeneration if needed
@@ -645,7 +643,7 @@ namespace hedra
        do{
          thereisChange = false;
          for (int i = 0; i < twinH.size(); i++) {
-           if (!validHE[i] || twinH(i) != -1)
+           if ((!validHE[i]) || (twinH(i) != -1))
              continue;
            if (transVertices[HV(i)] != transVertices[HV(nextH(i))])
              continue;  //this edge is OK
@@ -697,13 +695,25 @@ namespace hedra
        }
 
        std::vector<Point3D> newVertices(numNewVertices);
+       std::vector<bool> newValidV(numNewVertices);
+       std::vector<bool> newIsParamV(numNewVertices);
+       currV.resize(numNewVertices, 3);
+       Eigen::VectorXi newVH(numNewVertices);
        for (size_t i = 0; i < HE3D.size(); i++) {
-         if (!validV[i])
-           continue;
          Point3D newVertex = HE3D[i];
+         bool tmp = validV[i];
+         newVH(transVertices[i]) = VH(i);
          newVertices[transVertices[i]] = newVertex;
+         newValidV[transVertices[i]] = tmp;
+         newIsParamV[transVertices[i]] = isParamVertex[i];
+         currV.row(transVertices[i]) = Eigen::RowVector3d(CGAL::to_double(newVertex.x()),
+                                                          CGAL::to_double(newVertex.y()),
+                                                          CGAL::to_double(newVertex.z()));
        }
        HE3D = newVertices;
+       VH = newVH;
+       isParamVertex = newIsParamV;
+       validV = newValidV;
 
        for (int i = 0; i < HV.rows(); i++) {
          HV(i) = transVertices[HV(i)];
@@ -730,7 +740,7 @@ namespace hedra
 
         //check if a lonely edge
         if ((prevH(heindex) == twinH(heindex)) && (nextH(heindex) == twinH(heindex))) {
-          validHE[heindex] = validHE[heindex] = false;
+          validHE[heindex] = validHE[twinH(heindex)] = false;
           validV[HV(heindex)] = validV[HV(twinH(heindex))] = false;
           if ((FH(HF(heindex)) == heindex) || (twinH((FH(HF(heindex)))) == heindex)) {
             for (size_t i = 0; i < validHE.size(); i++) {
@@ -761,7 +771,7 @@ namespace hedra
           return;
         }
 
-        HF(fid0) = nextH(heindex);
+        FH(fid0) = nextH(heindex);
         if (fid0 != fid1)
           validF[fid1] = false;
 
@@ -888,9 +898,28 @@ namespace hedra
               HF(k)--;
         }
 
+        //removed unreferenced faces
+        std::vector<int> hitFaces(FH.rows(), 0);
+        for (int k = 0; k < HF.rows(); k++)
+          hitFaces[HF(k)]++;
+
+        for (int fid = hitFaces.size() - 1; fid >= 0; fid--) {
+          if (hitFaces[fid])
+            continue;
+          //remove the row
+          int numRows = FH.rows() - 1;
+          if (fid < numRows)
+            FH.segment(fid, numRows - fid) = FH.segment(fid + 1, numRows - fid).eval();
+          FH.conservativeResize(numRows);
+          //update IDs
+          for (int k = 0; k < HF.rows(); k++)
+            if (HF(k) > fid)
+              HF(k)--;
+        }
+
         //removed unreferenced vertices
         for (int vid = validV.size() - 1; vid >= 0; vid--) {
-          if (validV[vid] > 0)
+          if (validV[vid])
             continue;
           //remove the row
           int numRows = VH.rows() - 1;
@@ -941,17 +970,17 @@ namespace hedra
         std::vector<bool> validHE(HV.rows(), true), validV(HE3D.size(), true), validF(FH.rows(), true);
 
         //for every original inner edge, stitching up boundary (original boundary edges don't have any action item)
-        for (int i = 0; i < triInnerEdges.size(); i++) {
+        for (int i = 0; i < triEF.rows(); i++) {
           //first sorting to left and right edges according to faces
-          int currEdge = triInnerEdges(i);
+          int currEdge = i;//triInnerEdges(i);
           int leftFace = triEF(currEdge, 1);
           int rightFace = triEF(currEdge, 0);
 
           std::vector<int> leftHE, rightHE;
           for (size_t k = 0; k < origEdges2HE[currEdge].size(); k++) {
-            if (overlayFace2Tri[HF(origEdges2HE[currEdge][k])] == leftFace) {
+            if (leftFace != -1 && overlayFace2Tri[HF(origEdges2HE[currEdge][k])] == leftFace) {
               leftHE.push_back(origEdges2HE[currEdge][k]);
-            } else if (overlayFace2Tri[HF(origEdges2HE[currEdge][k])] == rightFace) {
+            } else if (rightFace != -1 && overlayFace2Tri[HF(origEdges2HE[currEdge][k])] == rightFace) {
               rightHE.push_back(origEdges2HE[currEdge][k]);
             } else
               throw std::runtime_error(
@@ -979,12 +1008,14 @@ namespace hedra
                            }
           );
 
-          Point3D A = HE3D[HV(leftHE[0])];
-          Point3D B = HE3D[HV(rightHE[0])];
-          // swap if the right is really left and vice versa
-          if (CGAL::has_smaller_distance_to_point(ref, B, A)) {
-            for (size_t k = 0; k < leftHE.size(); k++)
-              std::swap(leftHE[k], rightHE[k]);
+          if(leftHE.size() > 0 && rightHE.size() > 0) {
+            Point3D A = HE3D[HV(leftHE[0])];
+            Point3D B = HE3D[HV(rightHE[0])];
+            // swap if the right is really left and vice versa
+            if (CGAL::has_smaller_distance_to_point(ref, B, A)) {
+              for (size_t k = 0; k < leftHE.size(); k++)
+                std::swap(leftHE[k], rightHE[k]);
+            }
           }
           boundEdgesLeft[i].insert(boundEdgesLeft[i].end(), leftHE.begin(), leftHE.end());
           boundEdgesRight[i].insert(boundEdgesRight[i].end(), rightHE.begin(), rightHE.end());
@@ -994,7 +1025,7 @@ namespace hedra
         find_maching_vertices(boundEdgesLeft, boundEdgesRight, nextH, HE3D,HV, vertexMatches);
 
         std::vector<int> transVertices(HE3D.size());
-        graph_verification(boundEdgesLeft, boundEdgesRight, currV, nextH, prevH, twinH, HV, VH, HF, FH, vertexMatches, HE3D,transVertices, validHE, validV, validF);
+        graph_verification(boundEdgesLeft, boundEdgesRight, currV, nextH, prevH, twinH, HV, VH, HF, FH, vertexMatches, HE3D, transVertices, isParamVertex, validHE, validV, validF);
 
         //twinning up edges
         std::set<TwinFinder> twinning;
@@ -1039,6 +1070,30 @@ namespace hedra
             unifyEdges(VH(i), twinH, prevH, nextH, HF, FH, HV, VH, validHE, validV);
 
         cleanMesh(validHE, validV, validF, twinH, prevH, nextH, currV, HF, FH, HV, VH, isParamVertex, HE2origEdges, isParamHE);
+
+        //removed unreferenced vertices
+//        std::vector<int> hitVers(VH.rows(), 0);
+//        for (int k = 0; k < HV.rows(); k++)
+//          hitVers[HV(k)]++;
+//
+//        for (int vid = hitVers.size() - 1; vid >= 0; vid--) {
+//          if (hitVers[vid] > 0)
+//            continue;
+//          //remove the row
+//          int numRows = VH.rows() - 1;
+//          if (vid < numRows)
+//          {
+//            currV.block(vid, 0, numRows - vid, 3) = currV.block(vid + 1, 0, numRows - vid, 3).eval();
+//            VH.segment(vid, numRows - vid) = VH.segment(vid + 1, numRows - vid).eval();
+//          }
+//          currV.conservativeResize(numRows, 3);
+//          VH.conservativeResize(numRows);
+//          isParamVertex.erase(isParamVertex.begin() + vid);
+//          //update IDs
+//          for (int k = 0; k < HV.rows(); k++)
+//            if (HV(k) > vid)
+//              HV(k)--;
+//        }
       }
 
 
