@@ -334,6 +334,8 @@ namespace hedra
             continue;
           }
 
+          //std::cout << "Match distance " << currPair.Distance << std::endl;
+
           //otherwise this edge is legal, so add it
           result.push_back(pair<int, int>(currPair.Index1, currPair.Index2));
           if (!set1Connect[currPair.Index1]) numConnected++;
@@ -594,6 +596,8 @@ namespace hedra
          else
            removeEdge(i, HV, VH, HF, FH, twinH, nextH, prevH, validHE, validV, validF);
        }
+
+       std::cout << validV.size() << " " << numNewVertices << std::endl;
 
        std::vector<Point3D> newVertices(numNewVertices);
        std::vector<bool> newValidV(numNewVertices);
@@ -932,7 +936,7 @@ namespace hedra
             }while (CurrEdge != BeginEdge);
 
             PrevOrig=-1000;
-            bool In1;
+            bool In1 = true;
             for (int j = 0; j < CurrEdgeCollect.size(); j++) {
               if (CurrEdgeCollect[j].first != PrevOrig)
                 In1 = boundEdgesLeft[CurrEdgeCollect[j].first].empty();
@@ -968,76 +972,81 @@ namespace hedra
           }
         }
 
-        for (size_t i = 0;i < validHE.size(); i++){
-          if (!isParamHE[i] && validHE[i]) {
-            joinFace(i, twinH, prevH, nextH, HF, FH, HV, VH, validHE, validV, validF);
-          }
-        }
+//        for (size_t i = 0;i < validHE.size(); i++){
+//          if (!isParamHE[i] && validHE[i]) {
+//            joinFace(i, twinH, prevH, nextH, HF, FH, HV, VH, validHE, validV, validF);
+//          }
+//        }
 
         //unifying chains of edges
         //counting valences
-        std::vector<int> valences(HE3D.size(), 0);
-
-        for (size_t i = 0; i < validHE.size(); i++) {
-          if (validHE[i]) {
-            valences[HV(i)]++;
-            if (twinH(i) == -1)  //should account for the target as well
-              valences[HV(nextH(i))]++;
-          }
-        }
-
-        for (size_t i = 0; i < valences.size(); i++)
-          if (validV[i] && valences[i] < 2)
-            validV[i] = false;
-
-        for (size_t i = 0; i < valences.size(); i++)
-          if (validV[i] && valences[i] <= 2)
-            unifyEdges(VH(i), twinH, prevH, nextH, HF, FH, HV, VH, validHE, validV);
-
-
+//        std::vector<int> valences(HE3D.size(), 0);
+//
+//        for (size_t i = 0; i < validHE.size(); i++) {
+//          if (validHE[i]) {
+//            valences[HV(i)]++;
+//            if (twinH(i) == -1)  //should account for the target as well
+//              valences[HV(nextH(i))]++;
+//          }
+//        }
+//
+//        for (size_t i = 0; i < valences.size(); i++)
+//          if (validV[i] && valences[i] < 2)
+//            validV[i] = false;
+//
+//        for (size_t i = 0; i < valences.size(); i++)
+//          if (validV[i] && valences[i] <= 2)
+//            unifyEdges(VH(i), twinH, prevH, nextH, HF, FH, HV, VH, validHE, validV);
 
         //remove non-valid faces
-        for(size_t i = 0; i < validF.size(); i++)
-        {
-          if(!validF[i] ||nextH(nextH(FH(i))) != FH(i))
-            continue;
-
-          validF[i] = false;
-          int he = FH(i);
-
-          if (twinH(nextH(he)) == -1 && twinH(he) != -1)
-            he = nextH(he);
-
-          if(twinH(nextH(he)) != -1 && twinH(he) != -1) {
-            validHE[nextH(he)] = false;
-            validHE[he] = false;
-            twinH(twinH(nextH(he))) = twinH(he);
-            twinH(twinH(he)) = twinH(nextH(he));
-            VH(HV(nextH(he))) = twinH(he);
-            VH(HV(he)) = twinH(nextH(he));
-
-            if(isParamHE[he] || isParamHE[nextH(he)])
-            {
-              isParamHE[twinH(he)] = true;
-              isParamHE[twinH(nextH(he))] = true;
-            }
-          }
-          else if(twinH(he) == -1 && twinH(nextH(he)) != -1)
-          {
-            int tmp = twinH(nextH(he));
-            validHE[tmp] = false;
-            validHE[nextH(he)] = false;
-            prevH(nextH(tmp)) = he;
-            nextH(prevH(tmp)) = he;
-
-            VH(HV(nextH(he))) = nextH(tmp);
-            VH(HV(tmp)) = he;
-
-            nextH(he) = nextH(tmp);
-            prevH(he) = prevH(tmp);
-            HF(he) = HF(tmp);
-          }
-        }
+//        for(size_t i = 0; i < validF.size(); i++)
+//        {
+//          if(!validF[i] ||nextH(nextH(FH(i))) != FH(i))
+//            continue;
+//
+//          validF[i] = false;
+//          int he = FH(i);
+//
+//          if (twinH(nextH(he)) == -1 && twinH(he) != -1)
+//            he = nextH(he);
+//
+//          if(twinH(nextH(he)) != -1 && twinH(he) != -1) {
+//            validHE[nextH(he)] = false;
+//            validHE[he] = false;
+//            twinH(twinH(nextH(he))) = twinH(he);
+//            twinH(twinH(he)) = twinH(nextH(he));
+//            VH(HV(nextH(he))) = twinH(he);
+//            VH(HV(he)) = twinH(nextH(he));
+//
+//            if(isParamHE[he] || isParamHE[nextH(he)])
+//            {
+//              isParamHE[twinH(he)] = true;
+//              isParamHE[twinH(nextH(he))] = true;
+//            }
+//          }
+//          else if(twinH(he) == -1 && twinH(nextH(he)) != -1)
+//          {
+//
+//
+//            if(isParamHE[twinH(nextH(he))] || isParamHE[nextH(he)])
+//            {
+//              std::cout << "oups! " << std::endl;
+//            }
+//
+//            int tmp = twinH(nextH(he));
+//            validHE[tmp] = false;
+//            validHE[nextH(he)] = false;
+//            prevH(nextH(tmp)) = he;
+//            nextH(prevH(tmp)) = he;
+//
+//            VH(HV(nextH(he))) = nextH(tmp);
+//            VH(HV(tmp)) = he;
+//
+//            nextH(he) = nextH(tmp);
+//            prevH(he) = prevH(tmp);
+//            HF(he) = HF(tmp);
+//          }
+//        }
 
         cleanMesh(validHE, validV, validF, twinH, prevH, nextH, currV, HF, FH, HV, VH, isParamVertex, HE2origEdges, isParamHE);
       }
