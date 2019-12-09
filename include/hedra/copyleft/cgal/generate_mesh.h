@@ -284,107 +284,6 @@ namespace hedra
       }
 
 
-
-      void contract_edge(
-          const int eID,
-          Eigen::MatrixXd & currV,
-          Eigen::VectorXi &HV,
-          Eigen::VectorXi &HF,
-          Eigen::VectorXi & FH,
-          Eigen::VectorXi &nextH,
-          Eigen::VectorXi &prevH,
-          Eigen::VectorXi &twinH,
-          std::set<int> & removedHE,
-          std::set<int> & removedV) {
-
-        prevH(nextH(eID)) = prevH(eID);
-        nextH(prevH(eID)) = nextH(eID);
-
-        Eigen::Vector3d mid = currV.row(HV(eID)) + (currV.row(HV(nextH(eID))) - currV.row(HV(eID))) / 2.;
-        currV.row(HV(nextH(eID))) = mid;
-
-        int toRM = HV(eID);
-        int keep = HV(nextH(eID));
-        removedV.insert(toRM);
-        for(int k = 0; k < HV.rows(); k++)
-          if(HV(k) == toRM)
-            HV(k) = keep;
-
-        removedHE.insert(eID);
-        FH(HF(eID)) = nextH(eID);
-
-        //remove twin
-        if(twinH(eID) != -1)
-        {
-          removedHE.insert(twinH(eID));
-          FH(HF(twinH(eID))) = nextH(twinH(eID));
-
-          prevH(nextH(twinH(eID))) = prevH(twinH(eID));
-          nextH(prevH(twinH(eID))) = nextH(twinH(eID));
-        }
-      }
-
-      void remove_face(
-          const int eID,
-          Eigen::MatrixXd & currV,
-          Eigen::VectorXi &HV,
-          Eigen::VectorXi & HF,
-          Eigen::VectorXi & FH,
-          Eigen::VectorXi &nextH,
-          Eigen::VectorXi &prevH,
-          Eigen::VectorXi &twinH,
-          std::set<int> & removedHE,
-          std::set<int> & removedV) {
-      //find edges to contract
-      std::vector<int> rmE;
-      int ebegin = eID;
-      int ecurr = ebegin;
-      int counter = 0;
-      do {
-        if (counter > 30)
-          throw std::runtime_error("libhedra:stitch_boundaries: This should not happened!\n "
-                                   "Verify if your UV coordinates match at the cut and if so then report a bug at: https://github.com/avaxman/libhedra/issues");
-        rmE.push_back(ecurr);
-        ecurr = nextH(ecurr);
-        counter++;
-      } while (ebegin != ecurr);
-      for(auto id : rmE)
-        contract_edge(id, currV,HV,HF,FH,nextH,prevH,twinH,removedHE,removedV);
-    }
-
-      // from right to left
-
-    void find_edge_map(std::vector<int> & leftHE,
-                          std::vector<int> & rightHE,
-                          std::vector<Point3D> & HE3D,
-                          Eigen::VectorXi & HV,
-                          Eigen::VectorXi & nextH,
-                          std::multimap<int, int> & left2right)
-                          {
-
-      for (int j = 0; j < leftHE.size(); j++) {
-        //Eigen::Vector3d M = currV.row(HV(nextH(leftHE[j]))) - currV.row(HV(leftHE[j]));
-        //Eigen::Vector3d B = currV.row(HV(leftHE[j]));
-        auto sl = Segment3D(HE3D[HV(leftHE[j])], HE3D[HV(nextH(leftHE[j]))]);
-
-        for (int k = 0; k < rightHE.size(); k++) {
-          auto sr = Segment3D(HE3D[HV(rightHE[k])], HE3D[HV(nextH(rightHE[k]))]);
-          auto result = CGAL::intersection (sl, sr);
-          //Eigen::Vector3d N = (currV.row(HV(nextH(rightHE[k]))) - currV.row(HV(rightHE[k]))) / 2.;
-          // take middle point to avoid mismachings
-          //Eigen::Vector3d P = currV.row(HV(rightHE[k])).transpose() + N;
-          //double t = M.dot((P - B)) / (M.dot(M));
-          //if (t > 0. && t < 1.) {
-          //  std::cout << j << " " << k << " " << t << std::endl;
-          if(result) {
-            left2right.insert(std::pair<int, int>(j, k));
-              //std::cout << "map: " << j << " " << k << std::endl;
-          }
-         // }
-        }
-      }
-    }
-
     struct PointPair{
         int Index1, Index2;
         double Distance;
@@ -431,8 +330,9 @@ namespace hedra
               break;
             }
           }
-//          if (foundConflict)
-//            continue;
+          if (foundConflict) {
+            continue;
+          }
 
           //otherwise this edge is legal, so add it
           result.push_back(pair<int, int>(currPair.Index1, currPair.Index2));
@@ -464,6 +364,7 @@ namespace hedra
             vertexSetR[i].push_back(HV(eid));
           if (!boundEdgesRight[i].empty())
             vertexSetR[i].push_back(HV(nextH(boundEdgesRight[i].back())));
+          std::reverse(vertexSetR[i].begin(), vertexSetR[i].end());
         }
 
 
@@ -938,6 +839,19 @@ namespace hedra
         }
       }
 
+      void WalkBoundary(int &CurrEdge,
+                        Eigen::VectorXi & nextH,
+                        Eigen::VectorXi & twinH)
+    {
+        do{
+          CurrEdge = nextH(CurrEdge);
+          if (twinH(CurrEdge) == -1)
+            break;  //next boundary over a 2-valence vertex
+          CurrEdge = twinH(CurrEdge);
+        }while (twinH(CurrEdge) != -1);
+      }
+
+
       IGL_INLINE void stitch_boundaries2(
           std::vector<Point3D> & HE3D,
           int resolution,
@@ -969,57 +883,42 @@ namespace hedra
 
         std::vector<bool> validHE(HV.rows(), true), validV(HE3D.size(), true), validF(FH.rows(), true);
 
-        //for every original inner edge, stitching up boundary (original boundary edges don't have any action item)
-        for (int i = 0; i < triInnerEdges.rows(); i++) {
-          //first sorting to left and right edges according to faces
-          int currEdge = triInnerEdges(i);
-          int leftFace = triEF(currEdge, 1);
-          int rightFace = triEF(currEdge, 0);
+          //finding out vertex correspondence along twin edges of the original mesh by walking on boundaries
+          std::vector<bool> Marked(HE2origEdges.size());
+          for (int i = 0; i < HV.rows(); i++) {
+            if ((HE2origEdges[i] < 0) ||(Marked[i]))
+              continue;
+            //find the next beginning of a boundary
+            int PrevOrig;
+            int CurrEdge = i;
+            do{
+              PrevOrig = HE2origEdges[i];
+              WalkBoundary(CurrEdge, nextH, twinH);
+            }while(PrevOrig == HE2origEdges[CurrEdge]);
 
-          std::vector<int> leftHE, rightHE;
-          for (size_t k = 0; k < origEdges2HE[currEdge].size(); k++) {
-            if (overlayFace2Tri[HF(origEdges2HE[currEdge][k])] == leftFace) {
-              leftHE.push_back(origEdges2HE[currEdge][k]);
-            } else if (overlayFace2Tri[HF(origEdges2HE[currEdge][k])] == rightFace) {
-              rightHE.push_back(origEdges2HE[currEdge][k]);
-            } else
-              throw std::runtime_error(
-                  "libhedra:stitch_boundaries: This should not happened! Report a bug at: https://github.com/avaxman/libhedra/issues");
-          }
+            //filling out strips of boundary with the respective attached original halfedges
+            int BeginEdge = CurrEdge;
+            vector<pair<int,int> > CurrEdgeCollect;
+            do{
+              CurrEdgeCollect.push_back(pair<int, int> (HE2origEdges[CurrEdge], CurrEdge));
+              Marked[CurrEdge]=true;
+              WalkBoundary(CurrEdge, nextH, twinH);
+            }while (CurrEdge != BeginEdge);
 
-          //sort left and right edges
-          Eigen::RowVector3d refV = V.row(EV(currEdge, 0)) - (V.row(EV(currEdge, 1)) - V.row(EV(currEdge, 0))) * 2.;
-          Point3D ref(Number(refV(0)), Number(refV(1)), Number(refV(2)));
+            PrevOrig=-1000;
+            bool In1;
+            for (int j = 0; j < CurrEdgeCollect.size(); j++) {
+              if (CurrEdgeCollect[j].first != PrevOrig)
+                In1 = boundEdgesLeft[CurrEdgeCollect[j].first].empty();
 
-          std::stable_sort(leftHE.begin(), leftHE.end(),
-                           [&ref, &HE3D, &HV](const int &a, const int &b) -> bool {
-                             Point3D A = HE3D[HV(a)];
-                             Point3D B = HE3D[HV(b)];
-                             return CGAL::has_smaller_distance_to_point(ref, A, B);
-                           }
-          );
-
-          std::stable_sort(rightHE.begin(), rightHE.end(),
-                           [&ref, &HE3D, &HV](const int &a, const int &b) -> bool {
-                             Point3D A = HE3D[HV(a)];
-                             Point3D B = HE3D[HV(b)];
-                             return CGAL::has_smaller_distance_to_point(ref, A, B);
-
-                           }
-          );
-
-          if(leftHE.size() > 0 && rightHE.size() > 0) {
-            Point3D A = HE3D[HV(leftHE[0])];
-            Point3D B = HE3D[HV(rightHE[0])];
-            // swap if the right is really left and vice versa
-            if (CGAL::has_smaller_distance_to_point(ref, B, A)) {
-              for (size_t k = 0; k < leftHE.size(); k++)
-                std::swap(leftHE[k], rightHE[k]);
+              if (In1)
+                boundEdgesLeft[CurrEdgeCollect[j].first].push_back(CurrEdgeCollect[j].second);
+              else
+                boundEdgesRight[CurrEdgeCollect[j].first].push_back(CurrEdgeCollect[j].second);
+              PrevOrig = CurrEdgeCollect[j].first;
             }
           }
-          boundEdgesLeft[i].insert(boundEdgesLeft[i].end(), leftHE.begin(), leftHE.end());
-          boundEdgesRight[i].insert(boundEdgesRight[i].end(), rightHE.begin(), rightHE.end());
-        }
+
         // match vertives
         std::vector<std::pair<int, int> > vertexMatches;
         find_maching_vertices(boundEdgesLeft, boundEdgesRight, nextH, HE3D,HV, vertexMatches);
@@ -1043,14 +942,59 @@ namespace hedra
           }
         }
 
-//        for (size_t i = 0;i < validHE.size(); i++){
-//          if (!isParamHE[i] && validHE[i]) {
-//            joinFace(i, twinH, prevH, nextH, HF, FH, HV, VH, validHE, validV, validF);
-//          }
-//        }
-//
-//        //unifying chains of edges
-//        //counting valences
+
+        //remove non-valid faces
+        for(size_t i = 0; i < validF.size(); i++)
+        {
+          if(!validF[i] ||nextH(nextH(FH(i))) != FH(i))
+            continue;
+
+          validF[i] = false;
+          int he = FH(i);
+
+          if (twinH(nextH(he)) == -1 && twinH(he) != -1)
+            he = nextH(he);
+
+          if(twinH(nextH(he)) != -1 && twinH(he) != -1) {
+            validHE[nextH(he)] = false;
+            validHE[he] = false;
+            twinH(twinH(nextH(he))) = twinH(he);
+            twinH(twinH(he)) = twinH(nextH(he));
+            VH(HV(nextH(he))) = twinH(he);
+            VH(HV(he)) = twinH(nextH(he));
+
+            if(isParamHE[he] || isParamHE[nextH(he)])
+            {
+             isParamHE[twinH(he)] = true;
+              isParamHE[twinH(nextH(he))] = true;
+            }
+          }
+          else if(twinH(he) == -1 && twinH(nextH(he)) != -1)
+          {
+            int tmp = twinH(nextH(he));
+            validHE[tmp] = false;
+            validHE[nextH(he)] = false;
+            prevH(nextH(tmp)) = he;
+            nextH(prevH(tmp)) = he;
+
+            VH(HV(nextH(he))) = nextH(tmp);
+            VH(HV(tmp)) = he;
+
+            nextH(he) = nextH(tmp);
+            prevH(he) = prevH(tmp);
+            HF(he) = HF(tmp);
+          }
+        }
+
+        for (size_t i = 0;i < validHE.size(); i++){
+          if (!isParamHE[i] && validHE[i]) {
+            joinFace(i, twinH, prevH, nextH, HF, FH, HV, VH, validHE, validV, validF);
+          }
+        }
+
+
+        //unifying chains of edges
+        //counting valences
 //        std::vector<int> valences(HE3D.size(), 0);
 //
 //        for (size_t i = 0; i < validHE.size(); i++) {
@@ -1072,28 +1016,28 @@ namespace hedra
         cleanMesh(validHE, validV, validF, twinH, prevH, nextH, currV, HF, FH, HV, VH, isParamVertex, HE2origEdges, isParamHE);
 
         //removed unreferenced vertices
-//        std::vector<int> hitVers(VH.rows(), 0);
-//        for (int k = 0; k < HV.rows(); k++)
-//          hitVers[HV(k)]++;
-//
-//        for (int vid = hitVers.size() - 1; vid >= 0; vid--) {
-//          if (hitVers[vid] > 0)
-//            continue;
-//          //remove the row
-//          int numRows = VH.rows() - 1;
-//          if (vid < numRows)
-//          {
-//            currV.block(vid, 0, numRows - vid, 3) = currV.block(vid + 1, 0, numRows - vid, 3).eval();
-//            VH.segment(vid, numRows - vid) = VH.segment(vid + 1, numRows - vid).eval();
-//          }
-//          currV.conservativeResize(numRows, 3);
-//          VH.conservativeResize(numRows);
-//          isParamVertex.erase(isParamVertex.begin() + vid);
-//          //update IDs
-//          for (int k = 0; k < HV.rows(); k++)
-//            if (HV(k) > vid)
-//              HV(k)--;
-//        }
+        std::vector<int> hitVers(VH.rows(), 0);
+        for (int k = 0; k < HV.rows(); k++)
+          hitVers[HV(k)]++;
+
+        for (int vid = hitVers.size() - 1; vid >= 0; vid--) {
+          if (hitVers[vid] > 0)
+            continue;
+          //remove the row
+          int numRows = VH.rows() - 1;
+          if (vid < numRows)
+          {
+            currV.block(vid, 0, numRows - vid, 3) = currV.block(vid + 1, 0, numRows - vid, 3).eval();
+            VH.segment(vid, numRows - vid) = VH.segment(vid + 1, numRows - vid).eval();
+          }
+          currV.conservativeResize(numRows, 3);
+          VH.conservativeResize(numRows);
+          isParamVertex.erase(isParamVertex.begin() + vid);
+          //update IDs
+          for (int k = 0; k < HV.rows(); k++)
+            if (HV(k) > vid)
+              HV(k)--;
+        }
       }
 
 
