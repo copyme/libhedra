@@ -801,8 +801,9 @@ namespace hedra
 
         //removed unreferenced faces
         std::vector<int> hitFaces(FH.rows(), 0);
-        for (int k = 0; k < HF.rows(); k++)
+        for (int k = 0; k < HF.rows(); k++) {
           hitFaces[HF(k)]++;
+        }
 
         for (int fid = hitFaces.size() - 1; fid >= 0; fid--) {
           if (hitFaces[fid])
@@ -818,9 +819,34 @@ namespace hedra
               HF(k)--;
         }
 
-        //removed unreferenced vertices
+        //removed non-valid vertices
         for (int vid = validV.size() - 1; vid >= 0; vid--) {
           if (validV[vid])
+            continue;
+          //remove the row
+          int numRows = VH.rows() - 1;
+          if (vid < numRows)
+          {
+            currV.block(vid, 0, numRows - vid, 3) = currV.block(vid + 1, 0, numRows - vid, 3).eval();
+            VH.segment(vid, numRows - vid) = VH.segment(vid + 1, numRows - vid).eval();
+          }
+          currV.conservativeResize(numRows, 3);
+          VH.conservativeResize(numRows);
+          isParamVertex.erase(isParamVertex.begin() + vid);
+          //update IDs
+          for (int k = 0; k < HV.rows(); k++)
+            if (HV(k) > vid)
+              HV(k)--;
+        }
+
+        //removed unreferenced vertices
+        std::vector<int> hitVers(VH.rows(), 0);
+        for (int k = 0; k < HV.rows(); k++) {
+          hitVers[HV(k)]++;
+        }
+
+        for (int vid = hitVers.size() - 1; vid >= 0; vid--) {
+          if (hitVers[vid] > 0)
             continue;
           //remove the row
           int numRows = VH.rows() - 1;
@@ -942,6 +968,33 @@ namespace hedra
           }
         }
 
+        for (size_t i = 0;i < validHE.size(); i++){
+          if (!isParamHE[i] && validHE[i]) {
+            joinFace(i, twinH, prevH, nextH, HF, FH, HV, VH, validHE, validV, validF);
+          }
+        }
+
+        //unifying chains of edges
+        //counting valences
+        std::vector<int> valences(HE3D.size(), 0);
+
+        for (size_t i = 0; i < validHE.size(); i++) {
+          if (validHE[i]) {
+            valences[HV(i)]++;
+            if (twinH(i) == -1)  //should account for the target as well
+              valences[HV(nextH(i))]++;
+          }
+        }
+
+        for (size_t i = 0; i < valences.size(); i++)
+          if (validV[i] && valences[i] < 2)
+            validV[i] = false;
+
+        for (size_t i = 0; i < valences.size(); i++)
+          if (validV[i] && valences[i] <= 2)
+            unifyEdges(VH(i), twinH, prevH, nextH, HF, FH, HV, VH, validHE, validV);
+
+
 
         //remove non-valid faces
         for(size_t i = 0; i < validF.size(); i++)
@@ -965,7 +1018,7 @@ namespace hedra
 
             if(isParamHE[he] || isParamHE[nextH(he)])
             {
-             isParamHE[twinH(he)] = true;
+              isParamHE[twinH(he)] = true;
               isParamHE[twinH(nextH(he))] = true;
             }
           }
@@ -986,58 +1039,7 @@ namespace hedra
           }
         }
 
-        for (size_t i = 0;i < validHE.size(); i++){
-          if (!isParamHE[i] && validHE[i]) {
-            joinFace(i, twinH, prevH, nextH, HF, FH, HV, VH, validHE, validV, validF);
-          }
-        }
-
-
-        //unifying chains of edges
-        //counting valences
-//        std::vector<int> valences(HE3D.size(), 0);
-//
-//        for (size_t i = 0; i < validHE.size(); i++) {
-//          if (validHE[i]) {
-//            valences[HV(i)]++;
-//            if (twinH(i) == -1)  //should account for the target as well
-//              valences[HV(nextH(i))]++;
-//          }
-//        }
-//
-//        for (size_t i = 0; i < valences.size(); i++)
-//          if (validV[i] && valences[i] < 2)
-//            validV[i] = false;
-//
-//        for (size_t i = 0; i < valences.size(); i++)
-//          if (validV[i] && valences[i] <= 2)
-//            unifyEdges(VH(i), twinH, prevH, nextH, HF, FH, HV, VH, validHE, validV);
-
         cleanMesh(validHE, validV, validF, twinH, prevH, nextH, currV, HF, FH, HV, VH, isParamVertex, HE2origEdges, isParamHE);
-
-        //removed unreferenced vertices
-        std::vector<int> hitVers(VH.rows(), 0);
-        for (int k = 0; k < HV.rows(); k++)
-          hitVers[HV(k)]++;
-
-        for (int vid = hitVers.size() - 1; vid >= 0; vid--) {
-          if (hitVers[vid] > 0)
-            continue;
-          //remove the row
-          int numRows = VH.rows() - 1;
-          if (vid < numRows)
-          {
-            currV.block(vid, 0, numRows - vid, 3) = currV.block(vid + 1, 0, numRows - vid, 3).eval();
-            VH.segment(vid, numRows - vid) = VH.segment(vid + 1, numRows - vid).eval();
-          }
-          currV.conservativeResize(numRows, 3);
-          VH.conservativeResize(numRows);
-          isParamVertex.erase(isParamVertex.begin() + vid);
-          //update IDs
-          for (int k = 0; k < HV.rows(); k++)
-            if (HV(k) > vid)
-              HV(k)--;
-        }
       }
 
 
