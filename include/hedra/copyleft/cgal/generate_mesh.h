@@ -528,7 +528,7 @@ namespace hedra
         for (int i = 0; i < HV.rows(); i++) {
           if (HV(i) == removeVertex)
             HV(i) = leftVertex;
-          log << "now halfedge " << i << " has the vertex" << leftVertex << " as its origin \n";
+          log << "now halfedge " << i << " has the vertex " << leftVertex << " as its origin \n";
         }
       }
 
