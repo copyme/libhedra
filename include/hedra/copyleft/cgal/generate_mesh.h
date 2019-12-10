@@ -513,7 +513,7 @@ namespace hedra
         log << "Vertex " << removeVertex << " has been removed" << "\n";
         validV[removeVertex] = false;
         HV(nextH(heindex)) = HV(heindex);
-        log << "half-edge " << nextH(heindex) << " has the vertex" << HV(heindex) << " as its origin \n";
+        log << "half-edge " << nextH(heindex) << " has the vertex " << HV(heindex) << " as its origin \n";
         FH(HF(heindex)) = nextH(heindex);
 
         if (twinH(heindex) != -1) {
@@ -622,7 +622,8 @@ namespace hedra
                              std::vector<Point3D> & HE3D,
                              std::vector<int> & transVertices,
                              std::vector<bool> & isParamVertex,
-                             std::vector<bool> & validHE, std::vector<bool> & validV, std::vector<bool> & validF)
+                             std::vector<bool> & validHE, std::vector<bool> & validV, std::vector<bool> & validF,
+                             std::ostream & log = std::cout)
      {
        typedef boost::adjacency_list <boost::vecS, boost::vecS, boost::undirectedS> Graph;
        Graph MatchGraph;
@@ -685,9 +686,9 @@ namespace hedra
          } while (ebegin != ecurr);
 
          if (counter <= 3)
-           removeFace(HF(i), i, HV, VH, HF, FH, twinH, nextH, prevH, validHE, validV, validF);
+           removeFace(HF(i), i, HV, VH, HF, FH, twinH, nextH, prevH, validHE, validV, validF, log);
          else
-           removeEdge(i, HV, VH, HF, FH, twinH, nextH, prevH, validHE, validV, validF);
+           removeEdge(i, HV, VH, HF, FH, twinH, nextH, prevH, validHE, validV, validF, log);
        }
 
        std::vector<Point3D> newVertices(numNewVertices);
@@ -1071,7 +1072,7 @@ namespace hedra
         find_maching_vertices(boundEdgesLeft, boundEdgesRight, nextH, HE3D,HV, vertexMatches);
 
         std::vector<int> transVertices(HE3D.size());
-        graph_verification(boundEdgesLeft, boundEdgesRight, currV, nextH, prevH, twinH, HV, VH, HF, FH, vertexMatches, HE3D, transVertices, isParamVertex, validHE, validV, validF);
+        graph_verification(boundEdgesLeft, boundEdgesRight, currV, nextH, prevH, twinH, HV, VH, HF, FH, vertexMatches, HE3D, transVertices, isParamVertex, validHE, validV, validF, log);
 
         checkMesh(HV, VH, HF, FH, twinH, nextH, prevH, isParamHE, validHE, validV, validF);
         //twinning up edges
