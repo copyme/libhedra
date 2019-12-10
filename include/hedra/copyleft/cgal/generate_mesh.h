@@ -351,21 +351,27 @@ namespace hedra
                                const Eigen::VectorXi & nextH,
                                const std::vector<Point3D> & HE3D,
                                const Eigen::VectorXi & HV,
-                               std::vector<std::pair<int, int> > & vertexMatches)
+                               std::vector<std::pair<int, int> > & vertexMatches, std::vector<bool> & borderV)
     {
       std::vector<std::vector<int> > vertexSetL(boundEdgesLeft.size()), vertexSetR(boundEdgesRight.size());
         for (size_t i = 0; i < boundEdgesLeft.size(); i++) {
           for (auto eid : boundEdgesLeft[i])
             vertexSetL[i].push_back(HV(eid));
-          if (!boundEdgesLeft[i].empty())
+          if (!boundEdgesLeft[i].empty()) {
+            borderV[HV(boundEdgesLeft[i].front())] = true;
+            borderV[HV(nextH(boundEdgesLeft[i].back()))] = true;
             vertexSetL[i].push_back(HV(nextH(boundEdgesLeft[i].back())));
+          }
         }
 
         for (size_t i = 0; i < boundEdgesRight.size(); i++) {
           for (auto eid : boundEdgesRight[i])
             vertexSetR[i].push_back(HV(eid));
-          if (!boundEdgesRight[i].empty())
+          if (!boundEdgesRight[i].empty()) {
+            borderV[HV(boundEdgesRight[i].front())] = true;
+            borderV[HV(nextH(boundEdgesRight[i].back()))] = true;
             vertexSetR[i].push_back(HV(nextH(boundEdgesRight[i].back())));
+          }
           std::reverse(vertexSetR[i].begin(), vertexSetR[i].end());
         }
 
@@ -424,9 +430,15 @@ namespace hedra
                       std::vector<bool> & validV,
                       std::vector<bool> & validF,
                       const std::vector<int> HE2origEdges,
+                      const std::vector<bool> & borderV,
                       std::ostream & log = std::cout)
       {
         int leftVertex = HV(heindex);
+        if(borderV[HV(nextH(heindex))]) {
+          leftVertex = HV(nextH(heindex));
+        }
+
+        std::cout << borderV[HV(heindex)] << " " << borderV[HV(nextH(heindex))] << " " << borderV[HV(prevH(heindex))] << std::endl;
 
         int hebegin = heindex;
         int heiterate = hebegin;
@@ -487,6 +499,7 @@ namespace hedra
                       std::vector<bool> & validV,
                       std::vector<bool> & validF,
                       const std::vector<int> HE2origEdges,
+                      const std::vector<bool> & borderV,
                       std::ostream & log = std::cout
       )
       {
@@ -499,7 +512,7 @@ namespace hedra
             ecurr = nextH(ecurr);
           } while (ebegin != ecurr);
           if(counter <= 3) {
-            removeFace(HF(twinH(heindex)), twinH(heindex), HV, VH, HF, FH, twinH, nextH, prevH, validHE, validV, validF, HE2origEdges);
+            removeFace(HF(twinH(heindex)), twinH(heindex), HV, VH, HF, FH, twinH, nextH, prevH, validHE, validV, validF, HE2origEdges, borderV);
             return;
           }
         }
@@ -509,14 +522,21 @@ namespace hedra
         nextH(prevH(heindex)) = nextH(heindex);
         log << "Connecting " << prevH(heindex) << " -> " << nextH(heindex) << std::endl;
 
-        VH(HV(heindex)) = nextH(heindex);
-        log << "Vertex " << HV(heindex) << " points to " << nextH(heindex) <<"\n";
         int leftVertex = HV(heindex);
         int removeVertex = HV(nextH(heindex));
+        if(borderV[HV(nextH(heindex))])
+        {
+          leftVertex = HV(nextH(heindex));
+          removeVertex = HV(heindex);
+        }
+
+        log << "Vertex " << leftVertex << " points to " << nextH(heindex) <<"\n";
+
+        VH(leftVertex) = nextH(heindex);
         log << "Vertex " << removeVertex << " has been removed" << "\n";
         validV[removeVertex] = false;
-        HV(nextH(heindex)) = HV(heindex);
-        log << "half-edge " << nextH(heindex) << " has the vertex " << HV(heindex) << " as its origin \n";
+        HV(nextH(heindex)) = leftVertex;
+        log << "half-edge " << nextH(heindex) << " has the vertex " << leftVertex << " as its origin \n";
         FH(HF(heindex)) = nextH(heindex);
 
         if (twinH(heindex) != -1) {
@@ -628,6 +648,7 @@ namespace hedra
                              std::vector<bool> & validHE, std::vector<bool> & validV, std::vector<bool> & validF,
                              const std::vector<bool> & isParamHE,
                              const std::vector<int> & HE2origEdges,
+                             const std::vector<bool> & borderV,
                              std::ostream & log = std::cout)
      {
        typedef boost::adjacency_list <boost::vecS, boost::vecS, boost::undirectedS> Graph;
@@ -691,16 +712,18 @@ namespace hedra
          } while (ebegin != ecurr);
 
          if (counter <= 3) {
+           if(borderV[HV(i)] || borderV[HV(nextH(i))])
+             continue;
            std::cout << "check before remove face!" << std::endl;
            checkMesh(HV, VH, HF, FH, twinH, nextH, prevH, isParamHE, validHE, validV, validF);
-           removeFace(HF(i), i, HV, VH, HF, FH, twinH, nextH, prevH, validHE, validV, validF, HE2origEdges, log);
+           removeFace(HF(i), i, HV, VH, HF, FH, twinH, nextH, prevH, validHE, validV, validF, HE2origEdges, borderV, log);
            std::cout << "check after remove face!" << std::endl;
            checkMesh(HV, VH, HF, FH, twinH, nextH, prevH, isParamHE, validHE, validV, validF);
          }
          else {
            std::cout << "check before remove edge!" << std::endl;
            checkMesh(HV, VH, HF, FH, twinH, nextH, prevH, isParamHE, validHE, validV, validF);
-           removeEdge(i, HV, VH, HF, FH, twinH, nextH, prevH, validHE, validV, validF, HE2origEdges, log);
+           removeEdge(i, HV, VH, HF, FH, twinH, nextH, prevH, validHE, validV, validF, HE2origEdges, borderV, log);
            std::cout << "check after remove edge!" << std::endl;
            checkMesh(HV, VH, HF, FH, twinH, nextH, prevH, isParamHE, validHE, validV, validF);
          }
@@ -1047,6 +1070,7 @@ namespace hedra
         std::vector< std::vector<int> > boundEdgesLeft(triEF.rows()), boundEdgesRight(triEF.rows());
 
         std::vector<bool> validHE(HV.rows(), true), validV(HE3D.size(), true), validF(FH.rows(), true);
+        std::vector<bool> borderV(HE3D.size(), false);
 
         std::cout << "check before everything" << std::endl;
         checkMesh(HV, VH, HF, FH, twinH, nextH, prevH, isParamHE, validHE, validV, validF);
@@ -1089,59 +1113,59 @@ namespace hedra
 
         // match vertives
         std::vector<std::pair<int, int> > vertexMatches;
-        find_maching_vertices(boundEdgesLeft, boundEdgesRight, nextH, HE3D,HV, vertexMatches);
+        find_maching_vertices(boundEdgesLeft, boundEdgesRight, nextH, HE3D,HV, vertexMatches, borderV);
 
         std::vector<int> transVertices(HE3D.size());
-        graph_verification(boundEdgesLeft, boundEdgesRight, currV, nextH, prevH, twinH, HV, VH, HF, FH, vertexMatches, HE3D, transVertices, isParamVertex, validHE, validV, validF, isParamHE, HE2origEdges, log);
+        graph_verification(boundEdgesLeft, boundEdgesRight, currV, nextH, prevH, twinH, HV, VH, HF, FH, vertexMatches, HE3D, transVertices, isParamVertex, validHE, validV, validF, isParamHE, HE2origEdges, borderV, log);
 
 
         //remove non-valid faces
-        for(size_t i = 0; i < validF.size(); i++)
-        {
-          if(!validF[i] ||nextH(nextH(FH(i))) != FH(i))
-            continue;
-
-          validF[i] = false;
-          int he = FH(i);
-
-          if (twinH(nextH(he)) == -1 && twinH(he) != -1)
-            he = nextH(he);
-
-          if(twinH(nextH(he)) != -1 && twinH(he) != -1) {
-            validHE[nextH(he)] = false;
-            validHE[he] = false;
-            twinH(twinH(nextH(he))) = twinH(he);
-            twinH(twinH(he)) = twinH(nextH(he));
-            VH(HV(nextH(he))) = twinH(he);
-            VH(HV(he)) = twinH(nextH(he));
-
-            if(isParamHE[he] || isParamHE[nextH(he)])
-            {
-              isParamHE[twinH(he)] = true;
-              isParamHE[twinH(nextH(he))] = true;
-            }
-          }
-          else if(twinH(he) == -1 && twinH(nextH(he)) != -1)
-          {
-            if(isParamHE[twinH(nextH(he))] || isParamHE[nextH(he)])
-            {
-              std::cout << "oups! " << std::endl;
-            }
-
-            int tmp = twinH(nextH(he));
-            validHE[tmp] = false;
-            validHE[nextH(he)] = false;
-            prevH(nextH(tmp)) = he;
-            nextH(prevH(tmp)) = he;
-
-            VH(HV(nextH(he))) = nextH(tmp);
-            VH(HV(tmp)) = he;
-
-            nextH(he) = nextH(tmp);
-            prevH(he) = prevH(tmp);
-            HF(he) = HF(tmp);
-          }
-        }
+//        for(size_t i = 0; i < validF.size(); i++)
+//        {
+//          if(!validF[i] ||nextH(nextH(FH(i))) != FH(i))
+//            continue;
+//
+//          validF[i] = false;
+//          int he = FH(i);
+//
+//          if (twinH(nextH(he)) == -1 && twinH(he) != -1)
+//            he = nextH(he);
+//
+//          if(twinH(nextH(he)) != -1 && twinH(he) != -1) {
+//            validHE[nextH(he)] = false;
+//            validHE[he] = false;
+//            twinH(twinH(nextH(he))) = twinH(he);
+//            twinH(twinH(he)) = twinH(nextH(he));
+//            VH(HV(nextH(he))) = twinH(he);
+//            VH(HV(he)) = twinH(nextH(he));
+//
+//            if(isParamHE[he] || isParamHE[nextH(he)])
+//            {
+//              isParamHE[twinH(he)] = true;
+//              isParamHE[twinH(nextH(he))] = true;
+//            }
+//          }
+//          else if(twinH(he) == -1 && twinH(nextH(he)) != -1)
+//          {
+//            if(isParamHE[twinH(nextH(he))] || isParamHE[nextH(he)])
+//            {
+//              std::cout << "oups! " << std::endl;
+//            }
+//
+//            int tmp = twinH(nextH(he));
+//            validHE[tmp] = false;
+//            validHE[nextH(he)] = false;
+//            prevH(nextH(tmp)) = he;
+//            nextH(prevH(tmp)) = he;
+//
+//            VH(HV(nextH(he))) = nextH(tmp);
+//            VH(HV(tmp)) = he;
+//
+//            nextH(he) = nextH(tmp);
+//            prevH(he) = prevH(tmp);
+//            HF(he) = HF(tmp);
+//          }
+//        }
 
 
         std::cout << "check after graph" << std::endl;
@@ -1185,11 +1209,11 @@ namespace hedra
           log << "Face: "<< HF(i) << "\n";
         }
 
-//        for (size_t i = 0;i < validHE.size(); i++){
-//          if (!isParamHE[i] && validHE[i]) {
-//            joinFace(i, twinH, prevH, nextH, HF, FH, HV, VH, validHE, validV, validF);
-//          }
-//        }
+        for (size_t i = 0;i < validHE.size(); i++){
+          if (!isParamHE[i] && validHE[i]) {
+            joinFace(i, twinH, prevH, nextH, HF, FH, HV, VH, validHE, validV, validF);
+          }
+        }
 
         //unifying chains of edges
         //counting valences
