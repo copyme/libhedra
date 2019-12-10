@@ -818,9 +818,9 @@ namespace hedra
         }
       }
 
-      void testUnmatchedTwins(const Eigen::VectorXi & twinH, const Eigen::VectorXi & nextH, const Eigen::VectorXi & HV, const std::vector<bool> & validHE, const std::vector<Point3D> & HE3D, std::ostream & log = std::cout)
-      {
-        vector<int> untwinned;
+      void testUnmatchedTwins(const Eigen::VectorXi & twinH, const Eigen::VectorXi & nextH, const Eigen::VectorXi & HV, const std::vector<bool> & validHE, const std::vector<Point3D> & HE3D, const std::vector<int> & HE2origEdges, std::ostream & log = std::cout)
+    {
+      vector<int> untwinned;
         for (int i=0; i < validHE.size(); i++)
           if ((twinH(i) == -1) && (validHE[i]))
             untwinned.push_back(i);
@@ -830,8 +830,8 @@ namespace hedra
             Vector3D diff1 = HE3D[HV(untwinned[i])] - HE3D[HV(nextH(untwinned[j]))];
             Vector3D diff2 = HE3D[HV(untwinned[j])] - HE3D[HV(nextH(untwinned[i]))];
             if ((CGAL::to_double(CGAL::sqrt(diff1.squared_length())) < 10e-4) &&(CGAL::to_double(CGAL::sqrt(diff2.squared_length())) < 10e-4)) {
-              log << "Halfedge " << untwinned[i] << ":(" << HV(untwinned[i]) << ", " << HV(nextH(untwinned[i])) << ") is untwinned to ";
-              log << "Halfedge " << untwinned[j] << ":(" << HV(untwinned[j]) <<", " << HV(nextH(untwinned[j])) << ")\n";
+              log << "Halfedge " << untwinned[i] << " (org: " << HE2origEdges[untwinned[i]] << "), :(" << HV(untwinned[i]) << ", " << HV(nextH(untwinned[i])) << ") is untwinned to ";
+              log << "Halfedge " << untwinned[j]  << " (org: " << HE2origEdges[untwinned[j]] << "), :(" << HV(untwinned[j]) <<", " << HV(nextH(untwinned[j])) << ")\n";
               log << HE3D[HV(untwinned[i])] << " and " << HE3D[HV(nextH(untwinned[i]))] << std::endl;
               log << HE3D[HV(untwinned[j])] << " and "<< HE3D[HV(nextH(untwinned[j]))] << std::endl;
             }
@@ -1092,7 +1092,7 @@ namespace hedra
           }
         }
 
-        testUnmatchedTwins(twinH, nextH, HV, validHE, HE3D, log);
+        testUnmatchedTwins(twinH, nextH, HV, validHE, HE3D, HE2origEdges, log);
 
         checkMesh(HV, VH, HF, FH, twinH, nextH, prevH, isParamHE, validHE, validV, validF);
 
