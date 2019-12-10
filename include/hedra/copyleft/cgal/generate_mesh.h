@@ -1029,6 +1029,7 @@ namespace hedra
 
         std::vector<bool> validHE(HV.rows(), true), validV(HE3D.size(), true), validF(FH.rows(), true);
 
+        std::cout << "check before everything" << std::endl;
         checkMesh(HV, VH, HF, FH, twinH, nextH, prevH, isParamHE, validHE, validV, validF);
 
           //finding out vertex correspondence along twin edges of the original mesh by walking on boundaries
@@ -1074,6 +1075,7 @@ namespace hedra
         std::vector<int> transVertices(HE3D.size());
         graph_verification(boundEdgesLeft, boundEdgesRight, currV, nextH, prevH, twinH, HV, VH, HF, FH, vertexMatches, HE3D, transVertices, isParamVertex, validHE, validV, validF, log);
 
+        std::cout << "check after graph" << std::endl;
         checkMesh(HV, VH, HF, FH, twinH, nextH, prevH, isParamHE, validHE, validV, validF);
         //twinning up edges
         std::set<TwinFinder> twinning;
@@ -1094,11 +1096,12 @@ namespace hedra
 
         testUnmatchedTwins(twinH, nextH, HV, validHE, HE3D, HE2origEdges, log);
 
+        std::cout << "check after twins" << std::endl;
         checkMesh(HV, VH, HF, FH, twinH, nextH, prevH, isParamHE, validHE, validV, validF);
 
         for (size_t i = 0; i < isParamHE.size(); i++){
           if (isParamHE[i])
-            log <<" Hex edge "<< i << "\n";
+            log <<"Hex edge "<< i << "\n";
           else
             log << "Triangle edge " << i << "\n";
 
