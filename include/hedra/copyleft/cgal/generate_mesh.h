@@ -438,8 +438,6 @@ namespace hedra
           leftVertex = HV(nextH(heindex));
         }
 
-        std::cout << borderV[HV(heindex)] << " " << borderV[HV(nextH(heindex))] << " " << borderV[HV(prevH(heindex))] << std::endl;
-
         int hebegin = heindex;
         int heiterate = hebegin;
 
@@ -782,6 +780,7 @@ namespace hedra
 
         //check if a lonely edge
         if ((prevH(heindex) == twinH(heindex)) && (nextH(heindex) == twinH(heindex))) {
+          std::cout << "SPIKE" << std::endl;
           validHE[heindex] = validHE[twinH(heindex)] = false;
           validV[HV(heindex)] = validV[HV(twinH(heindex))] = false;
           if ((FH(HF(heindex)) == heindex) || (twinH((FH(HF(heindex)))) == heindex)) {
@@ -913,8 +912,7 @@ namespace hedra
             twinH(twinH(he)) = twinH(nextH(he));
             VH(HV(nextH(he))) = twinH(he);
             VH(HV(he)) = twinH(nextH(he));
-
-            if (isParamHE[he] || isParamHE[nextH(he)]) {
+            if(isParamHE[twinH(he)] || isParamHE[twinH(nextH(he))]) {
               isParamHE[twinH(he)] = true;
               isParamHE[twinH(nextH(he))] = true;
             }
@@ -1213,9 +1211,7 @@ namespace hedra
             twinH(twinit->index) = i;
             twinH(i) = twinit->index;
             if(isParamHE[i] || isParamHE[twinH(i)])
-            {
               isParamHE[i] = isParamHE[twinH(i)] = true;
-            }
             log << "Twinning " << i << " and " << twinit->index << "\n";
             twinning.erase(*twinit);
           } else {
@@ -1240,6 +1236,12 @@ namespace hedra
           }
         }
 
+        for (size_t i = 0;i < validHE.size(); i++){
+          if (isParamHE[i] && validHE[i] && prevH(i) == twinH(i)) {
+            removeEdge(i, HV, VH, HF, FH, twinH, nextH, prevH, validHE, validV, validF, HE2origEdges, borderV, log);
+          }
+        }
+
 
         for (size_t i = 0; i < isParamHE.size(); i++){
           if(!validHE[i])
@@ -1261,27 +1263,32 @@ namespace hedra
 
         //unifying chains of edges
         //counting valences
-//        std::vector<int> valences(HE3D.size(), 0);
-//
-//        for (size_t i = 0; i < validHE.size(); i++) {
-//          if (validHE[i]) {
-//            valences[HV(i)]++;
-//            if (twinH(i) == -1)  //should account for the target as well
-//              valences[HV(nextH(i))]++;
-//          }
-//        }
-//
-//        for (size_t i = 0; i < valences.size(); i++)
-//          if (validV[i] && valences[i] < 2)
-//            validV[i] = false;
-//
-//        for (size_t i = 0; i < valences.size(); i++)
-//          if (validV[i] && valences[i] <= 2)
-//            unifyEdges(VH(i), twinH, prevH, nextH, HF, FH, HV, VH, validHE, validV);
-//
-//
-//        std::cout << "check after unifying edges" << std::endl;
-//        checkMesh(HV, VH, HF, FH, twinH, nextH, prevH, isParamHE, validHE, validV, validF);
+        std::vector<int> valences(HE3D.size(), 0);
+
+        for (size_t i = 0; i < validHE.size(); i++) {
+          if (validHE[i]) {
+            valences[HV(i)]++;
+            if (twinH(i) == -1)  //should account for the target as well
+              valences[HV(nextH(i))]++;
+          }
+        }
+
+        for (size_t i = 0; i < valences.size(); i++)
+          if (validV[i] && valences[i] < 2)
+            validV[i] = false;
+
+        for (size_t i = 0; i < valences.size(); i++)
+          if (validV[i] && valences[i] <= 2)
+            unifyEdges(VH(i), twinH, prevH, nextH, HF, FH, HV, VH, validHE, validV);
+
+
+        std::cout << "check after unifying edges" << std::endl;
+        checkMesh(HV, VH, HF, FH, twinH, nextH, prevH, isParamHE, validHE, validV, validF);
+
+        while (removeDegenereties(twinH, prevH, nextH, HF, FH, HV, VH, validHE, validV, validF, HE2origEdges, isParamHE, borderV, HE3D, log));;
+
+        std::cout << "check after removing degenerete faces 2" << std::endl;
+        checkMesh(HV, VH, HF, FH, twinH, nextH, prevH, isParamHE, validHE, validV, validF);
 
         cleanMesh(validHE, validV, validF, twinH, prevH, nextH, currV, HF, FH, HV, VH, isParamVertex, HE2origEdges, isParamHE);
         log.close();
