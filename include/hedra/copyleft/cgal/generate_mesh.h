@@ -167,9 +167,9 @@ namespace hedra
 
 
       //for now doing quad (u,v,-u -v) only!
-      Point2 paramCoord2texCoord(const Eigen::RowVectorXd & paramCoord)
+      Point2 paramCoord2texCoord(const Eigen::RowVectorXd & paramCoord, int resolution)
       {
-        return Point2(Number(paramCoord(0)), Number(paramCoord(1)));
+        return Point2(Number(int(paramCoord(0) * resolution)) / Number(resolution), Number(int(paramCoord(1) * resolution)) / Number(resolution));
       }
 
 
@@ -248,6 +248,7 @@ namespace hedra
               facePC(i, 1) = cubeR(1);
             }
             Eigen::Vector2d p = facePC.row(i);
+
             coordsX[i] = Number((int)p(0)) * sqrt_3 - Number((int)p(1)) * sqrt_3 / Number(2);
             coordsY[i] = Number((int)p(1)) * Number(-3) / Number(2);
         }
@@ -1148,8 +1149,6 @@ namespace hedra
         std::vector<bool> validHE(HV.rows(), true), validV(HE3D.size(), true), validF(FH.rows(), true);
         std::vector<bool> borderV(HE3D.size(), false);
 
-
-
         std::cout << "check before everything" << std::endl;
         checkMesh(HV, VH, HF, FH, twinH, nextH, prevH, isParamHE, validHE, validV, validF);
 
@@ -1225,7 +1224,7 @@ namespace hedra
         checkMesh(HV, VH, HF, FH, twinH, nextH, prevH, isParamHE, validHE, validV, validF);
 
         //remove non-valid faces
-        while (removeDegenereties(twinH, prevH, nextH, HF, FH, HV, VH, validHE, validV, validF, HE2origEdges, isParamHE, borderV, HE3D, log));;
+        while (removeDegenereties(twinH, prevH, nextH, HF, FH, HV, VH, validHE, validV, validF, HE2origEdges, isParamHE, borderV, HE3D, log));
 
         std::cout << "check after removing degenerete faces" << std::endl;
         checkMesh(HV, VH, HF, FH, twinH, nextH, prevH, isParamHE, validHE, validV, validF);
@@ -1238,6 +1237,7 @@ namespace hedra
 
         for (size_t i = 0;i < validHE.size(); i++){
           if (isParamHE[i] && validHE[i] && prevH(i) == twinH(i)) {
+            std::cout << "REDUCE!" << std::endl;
             removeEdge(i, HV, VH, HF, FH, twinH, nextH, prevH, validHE, validV, validF, HE2origEdges, borderV, log);
           }
         }
@@ -1285,7 +1285,7 @@ namespace hedra
         std::cout << "check after unifying edges" << std::endl;
         checkMesh(HV, VH, HF, FH, twinH, nextH, prevH, isParamHE, validHE, validV, validF);
 
-        while (removeDegenereties(twinH, prevH, nextH, HF, FH, HV, VH, validHE, validV, validF, HE2origEdges, isParamHE, borderV, HE3D, log));;
+        while (removeDegenereties(twinH, prevH, nextH, HF, FH, HV, VH, validHE, validV, validF, HE2origEdges, isParamHE, borderV, HE3D, log));
 
         std::cout << "check after removing degenerete faces 2" << std::endl;
         checkMesh(HV, VH, HF, FH, twinH, nextH, prevH, isParamHE, validHE, validV, validF);
@@ -1366,9 +1366,9 @@ namespace hedra
             Eigen::RowVectorXd UV2 = UV.row(FUV(ti, (j + 1) % 3));
 
             //avoid degenerate cases in non-bijective parametrizations
-            if(paramCoord2texCoord(UV1) == paramCoord2texCoord(UV2))
+            if(paramCoord2texCoord(UV1, resolution) == paramCoord2texCoord(UV2, resolution))
               throw std::runtime_error("libhedra::generate_mesh: Only bijective parametrizations are supported, sorry!");
-            Halfedge_handle he=CGAL::insert_non_intersecting_curve(triangleArr, Segment2D(paramCoord2texCoord(UV1), paramCoord2texCoord(UV2)));
+            Halfedge_handle he=CGAL::insert_non_intersecting_curve(triangleArr, Segment2D(paramCoord2texCoord(UV1, resolution), paramCoord2texCoord(UV2, resolution)));
 
             ArrEdgeData aed;
             aed.isParam = false;
@@ -1512,7 +1512,7 @@ namespace hedra
               Eigen::RowVectorXd UV2 = UV.row(FUV(ti, (i + 1) % 3));
               Eigen::RowVectorXd UV3 = UV.row(FUV(ti, (i + 2) % 3));
 
-              Triangle2D t(vi->point(), paramCoord2texCoord(UV2),  paramCoord2texCoord(UV3));
+              Triangle2D t(vi->point(), paramCoord2texCoord(UV2, resolution),  paramCoord2texCoord(UV3, resolution));
               BaryValues[i] = t.area();
               Sum += BaryValues[i];
             }
