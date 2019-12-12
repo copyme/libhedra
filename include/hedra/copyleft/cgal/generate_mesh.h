@@ -899,9 +899,31 @@ namespace hedra
         if(v.size() >= 3)
           continue;
 
-        if (v.size() <= 1) {
+        if (v.size() <= 1) { // we need a smarter way to resolve a singularity than simple faceremove
           change = true;
-          removeFace(i, FH(i), HV, VH, HF, FH, twinH, nextH, prevH, validHE, validV, validF, HE2origEdges, borderV, log);
+          validF[i] = false;
+           ebegin = FH(i);
+           ecurr = ebegin;
+          do {
+            validHE[ecurr] = false;
+            ecurr = nextH(ecurr);
+          } while (ebegin != ecurr);
+
+          bool found = false;
+          for(int j = 0; j < HV.size(); j++)
+          {
+            if(!validHE[j])
+              continue;
+            if(HV(j) == HV(ebegin)) {
+              VH(HV(ebegin)) = j;
+              found = true;
+              break;
+            }
+          }
+
+          if(!found)
+            validV[HV(ebegin)] = false;
+
         } else if (counter == 2) { // v can be of size 2 but first we need to remove and edge and then reduce then face
           change = true;
           int he = FH(i);
@@ -1223,8 +1245,6 @@ namespace hedra
         std::cout << "check after twins" << std::endl;
         checkMesh(HV, VH, HF, FH, twinH, nextH, prevH, isParamHE, validHE, validV, validF);
 
-        //remove non-valid faces
-        while (removeDegenereties(twinH, prevH, nextH, HF, FH, HV, VH, validHE, validV, validF, HE2origEdges, isParamHE, borderV, HE3D, log));
 
         std::cout << "check after removing degenerete faces" << std::endl;
         checkMesh(HV, VH, HF, FH, twinH, nextH, prevH, isParamHE, validHE, validV, validF);
@@ -1235,12 +1255,12 @@ namespace hedra
           }
         }
 
-        for (size_t i = 0;i < validHE.size(); i++){
-          if (isParamHE[i] && validHE[i] && prevH(i) == twinH(i)) {
-            std::cout << "REDUCE!" << std::endl;
-            removeEdge(i, HV, VH, HF, FH, twinH, nextH, prevH, validHE, validV, validF, HE2origEdges, borderV, log);
-          }
-        }
+//        for (size_t i = 0;i < validHE.size(); i++){
+//          if (isParamHE[i] && validHE[i] && prevH(i) == twinH(i)) {
+//            std::cout << "REDUCE!" << std::endl;
+//            removeEdge(i, HV, VH, HF, FH, twinH, nextH, prevH, validHE, validV, validF, HE2origEdges, borderV, log);
+//          }
+//        }
 
 
         for (size_t i = 0; i < isParamHE.size(); i++){
@@ -1287,8 +1307,8 @@ namespace hedra
 
         while (removeDegenereties(twinH, prevH, nextH, HF, FH, HV, VH, validHE, validV, validF, HE2origEdges, isParamHE, borderV, HE3D, log));
 
-        std::cout << "check after removing degenerete faces 2" << std::endl;
-        checkMesh(HV, VH, HF, FH, twinH, nextH, prevH, isParamHE, validHE, validV, validF);
+        //std::cout << "check after removing degenerete faces 2" << std::endl;
+       // checkMesh(HV, VH, HF, FH, twinH, nextH, prevH, isParamHE, validHE, validV, validF);
 
         cleanMesh(validHE, validV, validF, twinH, prevH, nextH, currV, HF, FH, HV, VH, isParamVertex, HE2origEdges, isParamHE);
         log.close();
@@ -1345,6 +1365,7 @@ namespace hedra
         double minrange = (UV.colwise().maxCoeff() - UV.colwise().minCoeff()).minCoeff();
         // find the denominator for the  rational number representation
         int resolution = std::pow(10., std::ceil(std::log10(100000. / minrange)));
+        resolution = 100000;
 
         if(F.cols() != 3)
           throw std::runtime_error("libhedra::generate_mesh: For now, it works only with triangular faces!");

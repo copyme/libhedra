@@ -25,11 +25,11 @@ int main(int argc, char *argv[])
   Eigen::VectorXi innerEdges;
 
   // first testing case
-  igl::readOBJ("/home/kacper/Projects/Directional/tutorial/shared/ellipsoid_ex2.obj", V, TC, N, F, FTC, FN);
+  igl::readOBJ("/home/kacper/Projects/Directional/tutorial/shared/ellipsoid_3-param-full-seamless.obj", V, TC, N, F, FTC, FN);
   hedra::polygonal_edge_topology(VectorXi::Constant(F.rows(),3), F, EV, FE, EF, EFi, FEs, innerEdges);
   Eigen::RowVector3d spans = V.colwise().maxCoeff() - V.colwise().minCoeff();
   hedra::copyleft::cgal::generate_mesh(4, V, F, EV, FE, EF, innerEdges, TC, FTC, newV, newD, newF);
-  hedra::polygonal_write_OFF(std::string("ellipsoid_ex2.off"), newV, newD, newF);
+  hedra::polygonal_write_OFF(std::string("ellipsoid_3-param-full-seamless.off"), newV, newD, newF);
 
 //  igl::readOBJ("/home/kacper/Projects/PHex2/data/single_flap_grid_line_on_boundary.obj", V, TC, N, F, FTC, FN);
 //  hedra::polygonal_edge_topology(VectorXi::Constant(F.rows(),3), F, EV, FE, EF, EFi, FEs, innerEdges);
