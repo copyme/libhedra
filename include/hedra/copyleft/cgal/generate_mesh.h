@@ -166,10 +166,49 @@ namespace hedra
       typedef Arr_mesh_generation_overlay_traits <Arr_2, Arr_2,Arr_2>  Overlay_traits;
 
 
+
+      Point2 paramCoord2texCoordHex(const Eigen::RowVectorXd & paramCoord, int resolution)
+      {
+
+        ENumber esqrt_3(978122, 564719); // approx up to 10E-12
+        ENumber esqrt_3_div_2(489061, 564719); // approx up to 10E-12
+        Eigen::Matrix2d cH;
+        cH << std::sqrt(3.), -std::sqrt(3.) / 2., 0., -3. / 2.;
+        ENumber coordsX;
+        ENumber coordsY;
+        Eigen::Vector2d vals(paramCoord(0), paramCoord(1)); // PC.cols == 2
+        vals = cH.inverse() * (vals.eval() * resolution); // back to the axial coordinates
+          // round in the cube coordinates
+        Eigen::Vector3d cube(vals(0), -vals(1), -vals(0) + vals(1));
+        Eigen::Vector3d cubeR(std::round(vals(0)), std::round(vals(1)), std::round(-vals(0) + vals(1)));
+        Eigen::Vector3d diff(std::fabs(cubeR(0) - cube(0)), std::fabs(cubeR(1) - cube(1)), std::fabs(cubeR(2) - cube(2)));
+
+          if(diff(0) > diff(1) && diff(0) > diff(2))
+          {
+            vals(0) = (cubeR(1) - cubeR(2));
+            vals(1) = cubeR(1);
+          }
+          else if (diff(1) > diff(2))
+          {
+            vals(0) = cubeR(0);
+            vals(1) = (cubeR(0) + cubeR(2));
+          }
+          else
+          {
+            vals(0) = cubeR(0);
+            vals(1) = cubeR(1);
+          }
+          ENumber u = ENumber((int)vals(0)) * esqrt_3 - ENumber((int)vals(1)) * esqrt_3_div_2;
+          ENumber v = ENumber((int)vals(1)) * ENumber(-3, 2);
+
+       return Point2(u / ENumber(resolution), v / ENumber(resolution));
+      }
+
+
       //for now doing quad (u,v,-u -v) only!
       Point2 paramCoord2texCoord(const Eigen::RowVectorXd & paramCoord, int resolution)
       {
-        return Point2(ENumber(int(paramCoord(0) * resolution), resolution), ENumber(int(paramCoord(1) * resolution), resolution));
+        return Point2(ENumber((int)round(paramCoord(0) * resolution), resolution), ENumber((int)round(paramCoord(1) * resolution), resolution));
       }
 
 
@@ -183,32 +222,32 @@ namespace hedra
       // Output:
 
       // paramArr     # square grid pattern in the CGAL representation
-//      void square_grid_pattern(const Eigen::MatrixXd & UV, const Eigen::MatrixXi & FUV, const int resolution, const int ti, Arr_2 & paramArr)
-//      {
-//        //creating an arrangement of parameter lines
-//        Eigen::MatrixXd facePC(3, UV.cols()); // PC.cols == 2
-//        for (int i = 0; i < 3; i++)
-//          facePC.row(i) = UV.row(FUV(ti, i));
-//
-//        for (int i = 0; i < facePC.cols(); i++)
-//        {
-//          //inserting unbounded lines
-//          int coordMin = (int) std::floor(facePC.col(i).minCoeff() - 1.0);
-//          int coordMax = (int) std::ceil(facePC.col(i).maxCoeff() + 1.0);
-//          std::vector<Line2> lineCurves;
-//
-//          for (int coordIndex = coordMin; coordIndex <= coordMax; coordIndex++)
-//          {
-//            //The line coord = coordIndex
-//            Eigen::RowVectorXd LineCoord1 = Eigen::RowVectorXd::Zero(facePC.cols());
-//            Eigen::RowVectorXd LineCoord2 = Eigen::RowVectorXd::Ones(facePC.cols());
-//            LineCoord1(i) = coordIndex;
-//            LineCoord2(i) = coordIndex;
-//            lineCurves.emplace_back(paramCoord2texCoord(LineCoord1, resolution), paramCoord2texCoord(LineCoord2, resolution));
-//          }
-//          insert(paramArr, lineCurves.begin(), lineCurves.end());
-//        }
-//      }
+      void square_grid_pattern(const Eigen::MatrixXd & UV, const Eigen::MatrixXi & FUV, const int resolution, const int ti, Arr_2 & paramArr)
+      {
+        //creating an arrangement of parameter lines
+        Eigen::MatrixXd facePC(3, UV.cols()); // PC.cols == 2
+        for (int i = 0; i < 3; i++)
+          facePC.row(i) = UV.row(FUV(ti, i));
+
+        for (int i = 0; i < facePC.cols(); i++)
+        {
+          //inserting unbounded lines
+          int coordMin = (int) std::floor(facePC.col(i).minCoeff() - 1.0);
+          int coordMax = (int) std::ceil(facePC.col(i).maxCoeff() + 1.0);
+          std::vector<Line2> lineCurves;
+
+          for (int coordIndex = coordMin; coordIndex <= coordMax; coordIndex++)
+          {
+            //The line coord = coordIndex
+            Eigen::RowVectorXd LineCoord1 = Eigen::RowVectorXd::Zero(facePC.cols());
+            Eigen::RowVectorXd LineCoord2 = Eigen::RowVectorXd::Ones(facePC.cols());
+            LineCoord1(i) = coordIndex;
+            LineCoord2(i) = coordIndex;
+            lineCurves.emplace_back(paramCoord2texCoord(LineCoord1, resolution), paramCoord2texCoord(LineCoord2, resolution));
+          }
+          insert(paramArr, lineCurves.begin(), lineCurves.end());
+        }
+      }
 
       // the signature is the same as for the suare grid pattern function
       void tri_grid_pattern(const Eigen::MatrixXd & UV, const Eigen::MatrixXi & FUV, const int resolution, const int ti, Arr_2 & paramArr)
@@ -601,6 +640,9 @@ namespace hedra
         if (twinH(i) != -1 && twinH(twinH(i)) != i)
           throw std::runtime_error("TwinHE of twinHE is not correct!");
 
+        if (twinH(i) != -1 && twinH(i) == i)
+          throw std::runtime_error("TwinHE on itself!");
+
         if(twinH(i) != -1 && ((isParamHE[i] && !isParamHE[twinH(i)]) || (!isParamHE[i] && isParamHE[twinH(i)])))
           throw std::runtime_error("Param non-param conflict!");
 
@@ -727,7 +769,7 @@ namespace hedra
 //         else {
            std::cout << "check before remove edge!" << std::endl;
            checkMesh(HV, VH, HF, FH, twinH, nextH, prevH, isParamHE, validHE, validV, validF);
-           removeEdge(i, HV, VH, HF, FH, twinH, nextH, prevH, validHE, validV, validF, HE2origEdges, borderV, log);
+         removeEdge(i, HV, VH, HF, FH, twinH, nextH, prevH, validHE, validV, validF, HE2origEdges, borderV, log);
            std::cout << "check after remove edge!" << std::endl;
            checkMesh(HV, VH, HF, FH, twinH, nextH, prevH, isParamHE, validHE, validV, validF);
          //}
@@ -1246,9 +1288,6 @@ namespace hedra
         checkMesh(HV, VH, HF, FH, twinH, nextH, prevH, isParamHE, validHE, validV, validF);
 
 
-        std::cout << "check after removing degenerete faces" << std::endl;
-        checkMesh(HV, VH, HF, FH, twinH, nextH, prevH, isParamHE, validHE, validV, validF);
-
         for (size_t i = 0;i < validHE.size(); i++){
           if (!isParamHE[i] && validHE[i]) {
             joinFace(i, twinH, prevH, nextH, HF, FH, HV, VH, validHE, validV, validF);
@@ -1270,12 +1309,12 @@ namespace hedra
           log << "Twin: "<< twinH(i) << "\n";
           log << "Face: "<< HF(i) << "\n";
         }
-
-        std::cout << "check after join faces" << std::endl;
-        checkMesh(HV, VH, HF, FH, twinH, nextH, prevH, isParamHE, validHE, validV, validF);
-
-        //unifying chains of edges
-        //counting valences
+//
+//        std::cout << "check after join faces" << std::endl;
+//        checkMesh(HV, VH, HF, FH, twinH, nextH, prevH, isParamHE, validHE, validV, validF);
+//
+//        //unifying chains of edges
+//        //counting valences
         std::vector<int> valences(HE3D.size(), 0);
 
         for (size_t i = 0; i < validHE.size(); i++) {
@@ -1296,12 +1335,12 @@ namespace hedra
 
 
         std::cout << "check after unifying edges" << std::endl;
-        checkMesh(HV, VH, HF, FH, twinH, nextH, prevH, isParamHE, validHE, validV, validF);
-
+        //checkMesh(HV, VH, HF, FH, twinH, nextH, prevH, isParamHE, validHE, validV, validF);
+//
         while (removeDegenereties(twinH, prevH, nextH, HF, FH, HV, VH, validHE, validV, validF, HE2origEdges, isParamHE, borderV, HE3D, log));
-
+//
         std::cout << "check after removing degenerete faces 2" << std::endl;
-        checkMesh(HV, VH, HF, FH, twinH, nextH, prevH, isParamHE, validHE, validV, validF);
+       // checkMesh(HV, VH, HF, FH, twinH, nextH, prevH, isParamHE, validHE, validV, validF);
 
         cleanMesh(validHE, validV, validF, twinH, prevH, nextH, currV, HF, FH, HV, VH, isParamVertex, HE2origEdges, isParamHE);
         log.close();
@@ -1358,7 +1397,7 @@ namespace hedra
         double minrange = (UV.colwise().maxCoeff() - UV.colwise().minCoeff()).minCoeff();
         // find the denominator for the  rational number representation
         int resolution = std::pow(10., std::ceil(std::log10(100000. / minrange)));
-
+        std::cout << resolution << std::endl;
         if(F.cols() != 3)
           throw std::runtime_error("libhedra::generate_mesh: For now, it works only with triangular faces!");
 
@@ -1377,10 +1416,19 @@ namespace hedra
             Eigen::RowVectorXd UV2 = UV.row(FUV(ti, (j + 1) % 3));
 
             //avoid degenerate cases in non-bijective parametrizations
-            if(paramCoord2texCoord(UV1, resolution) == paramCoord2texCoord(UV2, resolution))
-              throw std::runtime_error("libhedra::generate_mesh: Only bijective parametrizations are supported, sorry!");
-            Halfedge_handle he=CGAL::insert_non_intersecting_curve(triangleArr, Segment2(paramCoord2texCoord(UV1, resolution), paramCoord2texCoord(UV2, resolution)));
 
+            Halfedge_handle he;
+            if(N == 4) {
+              if(paramCoord2texCoord(UV1, resolution) == paramCoord2texCoord(UV2, resolution))
+                throw std::runtime_error("libhedra::generate_mesh: Only bijective parametrizations are supported, sorry!");
+              he = CGAL::insert_non_intersecting_curve(triangleArr, Segment2(paramCoord2texCoord(UV1, resolution),
+                                                                             paramCoord2texCoord(UV2, resolution)));
+            }
+            else if (N == 6) {
+              if(paramCoord2texCoordHex(UV1, resolution) == paramCoord2texCoordHex(UV2, resolution))
+                throw std::runtime_error("libhedra::generate_mesh: Only bijective parametrizations are supported, sorry!");
+              he = CGAL::insert_non_intersecting_curve(triangleArr, Segment2(paramCoord2texCoordHex(UV1, resolution), paramCoord2texCoordHex(UV2, resolution)));
+            }
             ArrEdgeData aed;
             aed.isParam = false;
             aed.origEdge = FE(ti, j);
@@ -1398,12 +1446,12 @@ namespace hedra
           }
 
           // generate a respective grid pattern
-//          if (N == 4)
-//            square_grid_pattern(UV, FUV, resolution, ti, paramArr);
-//          else if (N == 6)
+          if (N == 4)
+            square_grid_pattern(UV, FUV, resolution, ti, paramArr);
+          else if (N == 6)
             tri_grid_pattern(UV, FUV, resolution, ti, paramArr);
-//          else
-//            throw std::runtime_error("libhedra::generate_mesh: Only the square and hexagonal grids are supported!");
+          else
+            throw std::runtime_error("libhedra::generate_mesh: Only the square and hexagonal grids are supported!");
 
           //Constructing the overlay arrangement
           Overlay_traits ot;
@@ -1522,7 +1570,11 @@ namespace hedra
               Eigen::RowVectorXd UV2 = UV.row(FUV(ti, (i + 1) % 3));
               Eigen::RowVectorXd UV3 = UV.row(FUV(ti, (i + 2) % 3));
 
-              ETriangle2D t(vi->point(), paramCoord2texCoord(UV2, resolution),  paramCoord2texCoord(UV3, resolution));
+              ETriangle2D t;
+              if(N == 4)
+                t = ETriangle2D(vi->point(), paramCoord2texCoord(UV2, resolution),  paramCoord2texCoord(UV3, resolution));
+              else if (N == 6)
+                t = ETriangle2D(vi->point(), paramCoord2texCoordHex(UV2, resolution),  paramCoord2texCoordHex(UV3, resolution));
               BaryValues[i] = t.area();
               Sum += BaryValues[i];
             }
@@ -1546,7 +1598,7 @@ namespace hedra
         }
 
         //mesh unification
-        stitch_boundaries2(HE3D, resolution, V, EF, innerEdges, currV, EV, VH, HV, HF, FH, nextH, prevH, twinH, isParamVertex, HE2origEdges, isParamHE, overlayFace2Triangle);
+       stitch_boundaries2(HE3D, resolution, V, EF, innerEdges, currV, EV, VH, HV, HF, FH, nextH, prevH, twinH, isParamVertex, HE2origEdges, isParamHE, overlayFace2Triangle);
 
         //consolidation
         newV = currV;

@@ -26,19 +26,17 @@ int main(int argc, char *argv[])
   Eigen::VectorXi innerEdges;
 
   // first testing case
-  igl::readOBJ("/home/kacper/Projects/Directional/tutorial/shared/ellipsoid_3-param-full-seamless.obj", V, TC, N, F, FTC, FN);
+  igl::readOBJ("/home/kacper/Projects/Directional/tutorial/shared/aqua-center-param-full-seamless.obj", V, TC, N, F, FTC, FN);
   hedra::polygonal_edge_topology(VectorXi::Constant(F.rows(),3), F, EV, FE, EF, EFi, FEs, innerEdges);
   Eigen::RowVector3d spans = V.colwise().maxCoeff() - V.colwise().minCoeff();
-  hedra::copyleft::cgal::generate_mesh(4, V, F, EV, FE, EF, innerEdges, TC, FTC, newV, newD, newF);
-  hedra::polygonal_write_OFF(std::string("ellipsoid_3-param-full-seamless.off"), newV, newD, newF);
-//  Eigen::MatrixXd fineV;
-//  Eigen::VectorXi fineD;
-//  Eigen::MatrixXi fineF;
-//
-//  igl::readOFF("/home/kacper/tt.off", V, F);
-//  Eigen::VectorXi D = Eigen::VectorXi::Constant(F.rows(), 3);
-//  hedra::dual_mesh(V, D, F, hedra::LINEAR_SUBDIVISION, fineV, fineD, fineF);
-//  hedra::polygonal_write_OFF(std::string("/home/kacper/hh.off"), fineV, fineD, fineF);
+  hedra::copyleft::cgal::generate_mesh(6, V, F, EV, FE, EF, innerEdges, TC, FTC, newV, newD, newF);
+  //hedra::polygonal_write_OFF(std::string("ellipsoid_3-param-full-seamless.off"), newV, newD, newF);
+  Eigen::MatrixXd fineV;
+  Eigen::VectorXi fineD;
+  Eigen::MatrixXi fineF;
+
+  hedra::dual_mesh(newV, newD, newF, hedra::LINEAR_SUBDIVISION, fineV, fineD, fineF);
+  hedra::polygonal_write_OFF(std::string("/home/kacper/aqua-center-param-full-seamless.off"), fineV, fineD, fineF);
 
 //  igl::readOBJ("/home/kacper/Projects/PHex2/data/single_flap_grid_line_on_boundary.obj", V, TC, N, F, FTC, FN);
 //  hedra::polygonal_edge_topology(VectorXi::Constant(F.rows(),3), F, EV, FE, EF, EFi, FEs, innerEdges);
