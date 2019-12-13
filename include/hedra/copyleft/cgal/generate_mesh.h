@@ -147,7 +147,7 @@ namespace hedra
         }
       };
 
-      typedef CGAL::Arr_linear_traits_2<Kernel>           Traits2;
+      typedef CGAL::Arr_linear_traits_2<EKernel>           Traits2;
       typedef Traits2::Point_2                             Point2;
       typedef Traits2::Segment_2                           Segment2;
       typedef Traits2::Line_2                              Line2;
@@ -169,7 +169,7 @@ namespace hedra
       //for now doing quad (u,v,-u -v) only!
       Point2 paramCoord2texCoord(const Eigen::RowVectorXd & paramCoord, int resolution)
       {
-        return Point2(Number(int(paramCoord(0) * resolution)) / Number(resolution), Number(int(paramCoord(1) * resolution)) / Number(resolution));
+        return Point2(ENumber(int(paramCoord(0) * resolution), resolution), ENumber(int(paramCoord(1) * resolution), resolution));
       }
 
 
@@ -218,69 +218,70 @@ namespace hedra
 
         Eigen::Matrix2d cH;
         cH << std::sqrt(3.), -std::sqrt(3.) / 2., 0., -3. / 2.;
-        std::vector<Number> coordsX(3);
-        std::vector<Number> coordsY(3);
+        std::vector<ENumber> coordsX(3);
+        std::vector<ENumber> coordsY(3);
 
-        auto sqrt_3 = CGAL::sqrt(Number(3));
+        ENumber esqrt_3(978122, 564719); // approx up to 10E-12
+        ENumber esqrt_3_div_2(489061, 564719); // approx up to 10E-12
+        ENumber esqrt_3_div_4(489061, 1129438); // approx up to 10E-12
 
         Eigen::MatrixXd facePC(3, UV.cols()); // PC.cols == 2
         for (int i = 0; i < 3; i++) {
           facePC.row(i) = cH.inverse() * UV.row(FUV(ti, i)).transpose(); // back to the axial coordinates
           // round in the cube coordinates
 
-            Eigen::Vector3d cube(facePC(i, 0), -facePC(i, 1), -facePC(i, 0) + facePC(i, 1));
-            Eigen::Vector3d cubeR(std::round(facePC(i, 0)), std::round(facePC(i, 1)), std::round(-facePC(i, 0) + facePC(i, 1)));
-            Eigen::Vector3d diff(std::fabs(cubeR(0) - cube(0)), std::fabs(cubeR(1) - cube(1)), std::fabs(cubeR(2) - cube(2)));
+          Eigen::Vector3d cube(facePC(i, 0), -facePC(i, 1), -facePC(i, 0) + facePC(i, 1));
+          Eigen::Vector3d cubeR(std::round(facePC(i, 0)), std::round(facePC(i, 1)), std::round(-facePC(i, 0) + facePC(i, 1)));
+          Eigen::Vector3d diff(std::fabs(cubeR(0) - cube(0)), std::fabs(cubeR(1) - cube(1)), std::fabs(cubeR(2) - cube(2)));
 
-            if(diff(0) > diff(1) && diff(0) > diff(2))
-            {
-              facePC(i, 0) = (cubeR(1) - cubeR(2));
-              facePC(i, 1) = cubeR(1);
-            }
-            else if (diff(1) > diff(2))
-            {
-              facePC(i, 0) = cubeR(0);
-              facePC(i, 1) = (cubeR(0) + cubeR(2));
-            }
-            else
-            {
-              facePC(i, 0) = cubeR(0);
-              facePC(i, 1) = cubeR(1);
-            }
-            Eigen::Vector2d p = facePC.row(i);
+          if(diff(0) > diff(1) && diff(0) > diff(2))
+          {
+            facePC(i, 0) = (cubeR(1) - cubeR(2));
+            facePC(i, 1) = cubeR(1);
+          }
+          else if (diff(1) > diff(2))
+          {
+            facePC(i, 0) = cubeR(0);
+            facePC(i, 1) = (cubeR(0) + cubeR(2));
+          }
+          else
+          {
+            facePC(i, 0) = cubeR(0);
+            facePC(i, 1) = cubeR(1);
+          }
+          Eigen::Vector2d p = facePC.row(i);
 
-            coordsX[i] = Number((int)p(0)) * sqrt_3 - Number((int)p(1)) * sqrt_3 / Number(2);
-            coordsY[i] = Number((int)p(1)) * Number(-3) / Number(2);
+          coordsX[i] = ENumber((int)p(0)) * esqrt_3 - ENumber((int)p(1)) * esqrt_3_div_2;
+          coordsY[i] = ENumber((int)p(1)) * ENumber(-3, 2);
         }
 
         // find min and max x
-        Number coordMinY = *(std::min_element(coordsY.cbegin(), coordsY.cend()));
-        Number coordMaxY = *(std::max_element(coordsY.cbegin(), coordsY.cend()));
-        Number coordMinX = *(std::min_element(coordsX.cbegin(), coordsX.cend()));
-        Number coordMaxX = *(std::max_element(coordsX.cbegin(), coordsX.cend()));
+        ENumber coordMinY = *(std::min_element(coordsY.cbegin(), coordsY.cend()));
+        ENumber coordMaxY = *(std::max_element(coordsY.cbegin(), coordsY.cend()));
+        ENumber coordMinX = *(std::min_element(coordsX.cbegin(), coordsX.cend()));
+        ENumber coordMaxX = *(std::max_element(coordsX.cbegin(), coordsX.cend()));
 
         //inserting unbounded lines -- vertical
-          std::vector<Line2> lineCurves;
-        Number incX = sqrt_3 / Number(4);
-        Number incY = Number(3) / Number(2);
-
-        Number yShift = Number(1) / Number(2);
-        Number xShift = sqrt_3 / Number(2);
+        std::vector<Line2> lineCurves;
+        ENumber incX = esqrt_3_div_4;
+        ENumber incY(3, 2);
+        ENumber yShift(1, 2);
+        ENumber xShift = esqrt_3_div_2;
 
         int c = 0;
 
-          for (Number coordIndexX = coordMinX - sqrt_3; coordIndexX <= coordMaxX + sqrt_3; coordIndexX += incX) {
-            lineCurves.emplace_back(Point2(coordIndexX, Number(0)), Point2(coordIndexX, Number(1)));
-            Number coordIndexY  = coordMinY - Number(6);
-            if (c % 2 != 0)
-              coordIndexY = coordMinY - Number(3) / Number(4);
-            for (; coordIndexY <= coordMaxY + Number(6); coordIndexY += incY) {
-              lineCurves.emplace_back(Point2(coordIndexX, coordIndexY), Point2(coordIndexX + xShift, coordIndexY + yShift));
-              lineCurves.emplace_back(Point2(coordIndexX, coordIndexY), Point2(coordIndexX + xShift, coordIndexY - yShift));
-            }
-
-            c++;
+        for (ENumber coordIndexX = coordMinX - esqrt_3; coordIndexX <= coordMaxX + esqrt_3; coordIndexX += incX) {
+          lineCurves.emplace_back(EPoint2D(coordIndexX, ENumber(0)), EPoint2D(coordIndexX, ENumber(1)));
+          ENumber coordIndexY  = coordMinY - ENumber(6);
+          if (c % 2 != 0)
+            coordIndexY = coordMinY - ENumber(3, 4);
+          for (; coordIndexY <= coordMaxY + ENumber(6); coordIndexY += incY) {
+            lineCurves.emplace_back(EPoint2D(coordIndexX, coordIndexY), EPoint2D(coordIndexX + xShift, coordIndexY + yShift));
+            lineCurves.emplace_back(EPoint2D(coordIndexX, coordIndexY), EPoint2D(coordIndexX + xShift, coordIndexY - yShift));
           }
+
+          c++;
+        }
         insert(paramArr, lineCurves.begin(), lineCurves.end());
       }
 
@@ -307,7 +308,7 @@ namespace hedra
         }
       };
 
-     void vertex_sets_match(const vector<Point3D>& set1, const vector<Point3D>& set2, std::vector<std::pair<int,int> > & result)
+     void vertex_sets_match(const std::vector<EPoint3D>& set1, const std::vector<EPoint3D>& set2, std::vector<std::pair<int,int> > & result)
       {
         std::set<PointPair> pairSet;
         for (int i = 0; i < set1.size(); i++)
@@ -315,8 +316,8 @@ namespace hedra
             pairSet.insert(PointPair(i, j, Norm(set1[i] - set2[j])));
 
         //adding greedily legal connections until graph is full
-        vector<bool> set1Connect(set1.size(), false);
-        vector<bool> set2Connect(set2.size(), false);
+        std::vector<bool> set1Connect(set1.size(), false);
+        std::vector<bool> set2Connect(set2.size(), false);
 
         int numConnected = 0;
         for (auto ppi = pairSet.begin(); ppi != pairSet.end(); ppi++)
@@ -338,7 +339,7 @@ namespace hedra
           //std::cout << "Match distance " << currPair.Distance << std::endl;
 
           //otherwise this edge is legal, so add it
-          result.push_back(pair<int, int>(currPair.Index1, currPair.Index2));
+          result.emplace_back(currPair.Index1, currPair.Index2);
           if (!set1Connect[currPair.Index1]) numConnected++;
           if (!set2Connect[currPair.Index2]) numConnected++;
           set1Connect[currPair.Index1] = set2Connect[currPair.Index2] = true;
@@ -350,7 +351,7 @@ namespace hedra
     void find_maching_vertices(const std::vector<std::vector<int> > & boundEdgesLeft,
                                const std::vector<std::vector<int> > & boundEdgesRight,
                                const Eigen::VectorXi & nextH,
-                               const std::vector<Point3D> & HE3D,
+                               const std::vector<EPoint3D> & HE3D,
                                const Eigen::VectorXi & HV,
                                std::vector<std::pair<int, int> > & vertexMatches, std::vector<bool> & borderV)
     {
@@ -378,8 +379,8 @@ namespace hedra
 
 
         for (size_t i = 0; i < boundEdgesRight.size(); i++) {
-          std::vector<Point3D> pointSetL(vertexSetL[i].size());
-          std::vector<Point3D> pointSetR(vertexSetR[i].size());
+          std::vector<EPoint3D> pointSetL(vertexSetL[i].size());
+          std::vector<EPoint3D> pointSetR(vertexSetR[i].size());
 
           for (size_t j = 0; j < pointSetL.size(); j++)
             pointSetL[j] = HE3D[vertexSetL[i][j]];
@@ -647,7 +648,7 @@ namespace hedra
                              Eigen::VectorXi & HF,
                              Eigen::VectorXi & FH,
                              std::vector<std::pair<int, int> > & vertexMatches,
-                             std::vector<Point3D> & HE3D,
+                             std::vector<EPoint3D> & HE3D,
                              std::vector<int> & transVertices,
                              std::vector<bool> & isParamVertex,
                              std::vector<bool> & validHE, std::vector<bool> & validV, std::vector<bool> & validF,
@@ -732,7 +733,7 @@ namespace hedra
          //}
        }
 
-       std::vector<Point3D> newVertices(numNewVertices);
+       std::vector<EPoint3D> newVertices(numNewVertices);
        std::vector<bool> newValidV(numNewVertices);
        std::vector<bool> newIsParamV(numNewVertices);
        currV.resize(numNewVertices, 3);
@@ -740,7 +741,7 @@ namespace hedra
        for (size_t i = 0; i < HE3D.size(); i++) {
          if(!validV[i])
            continue;
-         Point3D newVertex = HE3D[i];
+         EPoint3D newVertex = HE3D[i];
          currV.row(transVertices[i]) = Eigen::RowVector3d(CGAL::to_double(newVertex.x()),
                                                           CGAL::to_double(newVertex.y()),
                                                           CGAL::to_double(newVertex.z()));
@@ -781,7 +782,6 @@ namespace hedra
 
         //check if a lonely edge
         if ((prevH(heindex) == twinH(heindex)) && (nextH(heindex) == twinH(heindex))) {
-          std::cout << "SPIKE" << std::endl;
           validHE[heindex] = validHE[twinH(heindex)] = false;
           validV[HV(heindex)] = validV[HV(twinH(heindex))] = false;
           if ((FH(HF(heindex)) == heindex) || (twinH((FH(HF(heindex)))) == heindex)) {
@@ -877,7 +877,7 @@ namespace hedra
                               const std::vector<int> & HE2origEdges,
                               std::vector<bool> & isParamHE,
                               const std::vector<bool> & borderV,
-                              std::vector<Point3D> & HE3D,
+                              std::vector<EPoint3D> & HE3D,
                               std::ostream & log = std::cout)
     {
       bool change = false;
@@ -959,18 +959,18 @@ namespace hedra
     }
 
 
-      void testUnmatchedTwins(const Eigen::VectorXi & twinH, const Eigen::VectorXi & nextH, const Eigen::VectorXi & HV, const std::vector<bool> & validHE, const std::vector<Point3D> & HE3D, const std::vector<int> & HE2origEdges, std::ostream & log = std::cout)
+      void testUnmatchedTwins(const Eigen::VectorXi & twinH, const Eigen::VectorXi & nextH, const Eigen::VectorXi & HV, const std::vector<bool> & validHE, const std::vector<EPoint3D> & HE3D, const std::vector<int> & HE2origEdges, std::ostream & log = std::cout)
     {
-      vector<int> untwinned;
+      std::vector<int> untwinned;
         for (int i=0; i < validHE.size(); i++)
           if ((twinH(i) == -1) && (validHE[i]))
             untwinned.push_back(i);
 
         for (size_t i = 0; i < untwinned.size(); i++) {
           for (size_t j = i + 1; j < untwinned.size(); j++) {
-            Vector3D diff1 = HE3D[HV(untwinned[i])] - HE3D[HV(nextH(untwinned[j]))];
-            Vector3D diff2 = HE3D[HV(untwinned[j])] - HE3D[HV(nextH(untwinned[i]))];
-            if ((CGAL::to_double(CGAL::sqrt(diff1.squared_length())) < 10e-4) &&(CGAL::to_double(CGAL::sqrt(diff2.squared_length())) < 10e-4)) {
+            EVector3D diff1 = HE3D[HV(untwinned[i])] - HE3D[HV(nextH(untwinned[j]))];
+            EVector3D diff2 = HE3D[HV(untwinned[j])] - HE3D[HV(nextH(untwinned[i]))];
+            if ((CGAL::sqrt(CGAL::to_double(diff1.squared_length())) < 10e-4) &&(CGAL::sqrt(CGAL::to_double(diff2.squared_length())) < 10e-4)) {
               log << "Halfedge " << untwinned[i] << " (org: " << HE2origEdges[untwinned[i]] << "), :(" << HV(untwinned[i]) << ", " << HV(nextH(untwinned[i])) << ") is untwinned to ";
               log << "Halfedge " << untwinned[j]  << " (org: " << HE2origEdges[untwinned[j]] << "), :(" << HV(untwinned[j]) <<", " << HV(nextH(untwinned[j])) << ")\n";
               log << HE3D[HV(untwinned[i])] << " and " << HE3D[HV(nextH(untwinned[i]))] << std::endl;
@@ -1137,7 +1137,7 @@ namespace hedra
 
 
       IGL_INLINE void stitch_boundaries2(
-          std::vector<Point3D> & HE3D,
+          std::vector<EPoint3D> & HE3D,
           int resolution,
           const Eigen::MatrixXd & V,
           const Eigen::MatrixXi & triEF,
@@ -1189,9 +1189,9 @@ namespace hedra
 
             //filling out strips of boundary with the respective attached original halfedges
             int BeginEdge = CurrEdge;
-            vector<pair<int,int> > CurrEdgeCollect;
+            std::vector<std::pair<int,int> > CurrEdgeCollect;
             do{
-              CurrEdgeCollect.push_back(pair<int, int> (HE2origEdges[CurrEdge], CurrEdge));
+              CurrEdgeCollect.emplace_back(HE2origEdges[CurrEdge], CurrEdge);
               Marked[CurrEdge]=true;
               WalkBoundary(CurrEdge, nextH, twinH);
             }while (CurrEdge != BeginEdge);
@@ -1255,13 +1255,6 @@ namespace hedra
           }
         }
 
-//        for (size_t i = 0;i < validHE.size(); i++){
-//          if (isParamHE[i] && validHE[i] && prevH(i) == twinH(i)) {
-//            std::cout << "REDUCE!" << std::endl;
-//            removeEdge(i, HV, VH, HF, FH, twinH, nextH, prevH, validHE, validV, validF, HE2origEdges, borderV, log);
-//          }
-//        }
-
 
         for (size_t i = 0; i < isParamHE.size(); i++){
           if(!validHE[i])
@@ -1307,8 +1300,8 @@ namespace hedra
 
         while (removeDegenereties(twinH, prevH, nextH, HF, FH, HV, VH, validHE, validV, validF, HE2origEdges, isParamHE, borderV, HE3D, log));
 
-        //std::cout << "check after removing degenerete faces 2" << std::endl;
-       // checkMesh(HV, VH, HF, FH, twinH, nextH, prevH, isParamHE, validHE, validV, validF);
+        std::cout << "check after removing degenerete faces 2" << std::endl;
+        checkMesh(HV, VH, HF, FH, twinH, nextH, prevH, isParamHE, validHE, validV, validF);
 
         cleanMesh(validHE, validV, validF, twinH, prevH, nextH, currV, HF, FH, HV, VH, isParamVertex, HE2origEdges, isParamHE);
         log.close();
@@ -1360,12 +1353,11 @@ namespace hedra
         std::vector<bool> isParamHE; // information if a given half-edge is from the parametrization
         std::vector<int> overlayFace2Triangle; // triangle face ID or -1 when a face is unbounded
 
-        std::vector<Point3D> HE3D;
+        std::vector<EPoint3D> HE3D;
 
         double minrange = (UV.colwise().maxCoeff() - UV.colwise().minCoeff()).minCoeff();
         // find the denominator for the  rational number representation
         int resolution = std::pow(10., std::ceil(std::log10(100000. / minrange)));
-        resolution = 100000;
 
         if(F.cols() != 3)
           throw std::runtime_error("libhedra::generate_mesh: For now, it works only with triangular faces!");
@@ -1375,8 +1367,6 @@ namespace hedra
         for (int ti = 0; ti < F.rows(); ti++)
         {
           Arr_2 paramArr, triangleArr, overlayArr;
-
-          std::cout << "Triangle: " << ti << std::endl;
 
           /* for all vertices of each face take UVs
            * and add edges of the face to the arrangment
@@ -1389,7 +1379,7 @@ namespace hedra
             //avoid degenerate cases in non-bijective parametrizations
             if(paramCoord2texCoord(UV1, resolution) == paramCoord2texCoord(UV2, resolution))
               throw std::runtime_error("libhedra::generate_mesh: Only bijective parametrizations are supported, sorry!");
-            Halfedge_handle he=CGAL::insert_non_intersecting_curve(triangleArr, Segment2D(paramCoord2texCoord(UV1, resolution), paramCoord2texCoord(UV2, resolution)));
+            Halfedge_handle he=CGAL::insert_non_intersecting_curve(triangleArr, Segment2(paramCoord2texCoord(UV1, resolution), paramCoord2texCoord(UV2, resolution)));
 
             ArrEdgeData aed;
             aed.isParam = false;
@@ -1412,7 +1402,6 @@ namespace hedra
 //            square_grid_pattern(UV, FUV, resolution, ti, paramArr);
 //          else if (N == 6)
             tri_grid_pattern(UV, FUV, resolution, ti, paramArr);
-          std::cout << "after " << std::endl;
 //          else
 //            throw std::runtime_error("libhedra::generate_mesh: Only the square and hexagonal grids are supported!");
 
@@ -1520,8 +1509,8 @@ namespace hedra
             if (vi->data() < 0)
               continue;
 
-            Number BaryValues[3];
-            Number Sum = 0;
+            ENumber BaryValues[3];
+            ENumber Sum = 0;
 
             for (int i = 0; i < 3; i++)
             {
@@ -1533,7 +1522,7 @@ namespace hedra
               Eigen::RowVectorXd UV2 = UV.row(FUV(ti, (i + 1) % 3));
               Eigen::RowVectorXd UV3 = UV.row(FUV(ti, (i + 2) % 3));
 
-              Triangle2D t(vi->point(), paramCoord2texCoord(UV2, resolution),  paramCoord2texCoord(UV3, resolution));
+              ETriangle2D t(vi->point(), paramCoord2texCoord(UV2, resolution),  paramCoord2texCoord(UV3, resolution));
               BaryValues[i] = t.area();
               Sum += BaryValues[i];
             }
@@ -1541,11 +1530,11 @@ namespace hedra
             for (int i = 0; i < 3; i++)
               BaryValues[i] /= Sum;
 
-            Point3D ENewPosition(0, 0, 0);
+            EPoint3D ENewPosition(0, 0, 0);
             //find the weighted position of the vertex inside the face, i.e., the 3D position of the vertex lifted to 3D
             for (int i = 0; i < 3; i++)
             {
-              Point3D vertexCoord(V(F(ti, i), 0), V(F(ti, i), 1), V(F(ti, i), 2));
+              EPoint3D vertexCoord(V(F(ti, i), 0), V(F(ti, i), 1), V(F(ti, i), 2));
 
               ENewPosition = ENewPosition + (vertexCoord - CGAL::ORIGIN) * BaryValues[i];
             }

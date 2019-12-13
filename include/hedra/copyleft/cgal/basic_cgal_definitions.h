@@ -14,7 +14,6 @@
 #include<CGAL/Cartesian.h>
 #include<CGAL/Polygon_2.h>
 #include<CGAL/Exact_predicates_inexact_constructions_kernel.h>
-#include<CGAL/Exact_predicates_exact_constructions_kernel.h>
 #include <CGAL/Simple_cartesian.h>
 #include <CGAL/Cartesian.h>
 #include <CGAL/Polyhedron_3.h>
@@ -23,9 +22,8 @@
 #include <CGAL/Arr_extended_dcel.h>
 #include <CGAL/Arr_overlay_2.h>
 #include <CGAL/Arr_default_overlay_traits.h>
-#include <vector>
+#include <CGAL/squared_distance_3.h>
 
-#include <CGAL/Exact_predicates_exact_constructions_kernel_with_sqrt.h>
 #include <CGAL/Exact_rational.h>
 
 namespace hedra
@@ -35,8 +33,9 @@ namespace hedra
     namespace cgal
     {
 
-      typedef CGAL::Exact_predicates_exact_constructions_kernel_with_sqrt Kernel;
-      typedef CGAL::Simple_cartesian<CGAL::Exact_rational>  EKernel;
+      typedef CGAL::Exact_predicates_inexact_constructions_kernel Kernel;
+      typedef CGAL::Simple_cartesian<CGAL::Gmpq>  EKernel;
+
 
       typedef std::vector<int> SelectionCurve;
 
@@ -50,6 +49,8 @@ namespace hedra
       typedef Kernel::Line_3 Line3D;
       typedef Kernel::Vector_2 Vector2D;
       typedef Kernel::Vector_3 Vector3D;
+      typedef EKernel::Vector_2 EVector2D;
+      typedef EKernel::Vector_3 EVector3D;
       typedef Kernel::Segment_2 Segment2D;
       typedef Kernel::Segment_3 Segment3D;
       typedef Kernel::Plane_3 Plane3D;
@@ -71,7 +72,7 @@ namespace hedra
         v=v/sqrt(squared_distance(Point3D(0,0,0)+v,Point3D(0,0,0)));
       }
 
-      inline double Norm(const Vector3D &v){return CGAL::to_double(CGAL::sqrt(squared_distance(Point3D(0,0,0)+v,Point3D(0,0,0))));}
+      inline double Norm(const EVector3D &v){return CGAL::sqrt(CGAL::to_double(v.squared_length()));}
       
     }
   }
