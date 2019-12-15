@@ -71,6 +71,7 @@ namespace hedra
 
       const ENumber esqrt_3(978122, 564719); // approx up to 10E-12
       const ENumber esqrt_3_div_2(489061, 564719); // approx up to 10E-12
+      const ENumber two_div_sqrt_3(564719, 489061); // approx up to 10E-12
       const ENumber esqrt_3_div_4(489061, 1129438); // approx up to 10E-12
 
 

@@ -322,7 +322,7 @@ namespace hedra
         ENumber cx = uv.x() * ENumber(3) - uv.y() * ENumber(3, 2);
         ENumber cy = uv.y() * esqrt_3_div_2;
         //ENumber cx = uv.x() * ENumber(3);
-        //ENumber cy = uv.x() * ENumber(3, 2) + uv.y() * esqrt_3_div_2;
+        //ENumber cy = uv.x() * ENumber(-3, 2) + uv.y() * esqrt_3_div_2;
         return EPoint2D(cx, cy);
       }
 
@@ -331,7 +331,7 @@ namespace hedra
         ENumber cx = u * ENumber(3) - v * ENumber(3, 2);
         ENumber cy =v * esqrt_3_div_2;
         //ENumber cx = u * ENumber(3);
-        //ENumber cy = u * ENumber(3, 2) + v * esqrt_3_div_2;
+        //ENumber cy = u * ENumber(-3, 2) + v * esqrt_3_div_2;
         return EPoint2D(cx, cy);
       }
 
@@ -341,7 +341,7 @@ namespace hedra
         ENumber v = uv.y() *  ENumber(2) / esqrt_3;
         ENumber u = (uv.x() + ENumber(3, 2) * v) / ENumber(3);
         //ENumber u = uv.x() * ENumber(1, 3);
-        //ENumber v = uv.y() * ENumber(2) / esqrt_3 - uv.x() / esqrt_3;
+        //ENumber v = uv.x() / esqrt_3 + uv.y() * two_div_sqrt_3;
 
         return EPoint2D(u, v);
       }
@@ -497,7 +497,7 @@ namespace hedra
         Face_handle uf2 = ModifyLinesArr[1].unbounded_face();
         Face_handle uf3 = ModifyLinesArr[2].unbounded_face();
         for (auto ci = circles.begin(); ci != circles.end(); ci++) {
-          EPoint2D SourcePos1i(ci->first+ ENumber(1, 3), ci->second);
+          EPoint2D SourcePos1i(ci->first + ENumber(1, 3), ci->second);
           EPoint2D TargetPos1i(ci->first + ENumber(1, 6), ci->second);
 
           EPoint2D SourcePos2i(ci->first - ENumber(1, 3), ci->second);
@@ -1720,8 +1720,13 @@ namespace hedra
         {
           EPoint2D  uv = paramCoord2texCoord(UV.row(i), resolution);
           //if(N == 6)
-            uv = EPoint2D(uv.x() * esqrt_3 - uv.y() * esqrt_3_div_2, uv.y() * ENumber(-3,2));
+
+          //uv = EPoint2D(uv.x() - uv.y() * ENumber(1, 2), uv.y() * ENumber(-1) * esqrt_3_div_2);
+          //exactUVs[i] = uv;
+
+          uv = EPoint2D(uv.x() * esqrt_3 - uv.y() * esqrt_3_div_2, uv.y() * ENumber(-3,2));
           exactUVs[i] = EPoint2D(uv.y(), uv.x());
+          //exactUVs[i] = uv;
         }
 
 
@@ -1911,7 +1916,7 @@ namespace hedra
         }
 
         //mesh unification
-       stitch_boundaries2(HE3D, resolution, V, EF, innerEdges, currV, EV, VH, HV, HF, FH, nextH, prevH, twinH, isParamVertex, HE2origEdges, isParamHE, overlayFace2Triangle);
+        stitch_boundaries2(HE3D, resolution, V, EF, innerEdges, currV, EV, VH, HV, HF, FH, nextH, prevH, twinH, isParamVertex, HE2origEdges, isParamHE, overlayFace2Triangle);
 
         //consolidation
         newV = currV;

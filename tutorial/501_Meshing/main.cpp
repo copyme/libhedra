@@ -26,11 +26,11 @@ int main(int argc, char *argv[])
   Eigen::VectorXi innerEdges;
 
   // first testing case
-  igl::readOBJ("/home/kacper/Projects/Directional/tutorial/shared/lilium-full.obj", V, TC, N, F, FTC, FN);
+  igl::readOBJ("/home/kacper/Projects/Directional/tutorial/shared/aqua-center-param-full-seamless.obj", V, TC, N, F, FTC, FN);
   hedra::polygonal_edge_topology(VectorXi::Constant(F.rows(),3), F, EV, FE, EF, EFi, FEs, innerEdges);
   Eigen::RowVector3d spans = V.colwise().maxCoeff() - V.colwise().minCoeff();
   hedra::copyleft::cgal::generate_mesh(6, V, F, EV, FE, EF, innerEdges, TC, FTC, newV, newD, newF);
-  hedra::polygonal_write_OFF(std::string("lilium.off"), newV, newD, newF);
+  hedra::polygonal_write_OFF(std::string("aqua-center.off"), newV, newD, newF);
 //  Eigen::MatrixXd fineV;
 //  Eigen::VectorXi fineD;
 //  Eigen::MatrixXi fineF;
