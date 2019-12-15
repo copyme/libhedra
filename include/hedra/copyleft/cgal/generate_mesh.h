@@ -10,7 +10,7 @@
 #include <stdexcept>
 #include <vector>
 #include <set>
-
+#include <queue>
 
 #include <boost/config.hpp>
 #include <boost/graph/adjacency_list.hpp>
@@ -170,8 +170,6 @@ namespace hedra
       Point2 paramCoord2texCoordHex(const Eigen::RowVectorXd & paramCoord, int resolution)
       {
 
-        ENumber esqrt_3(978122, 564719); // approx up to 10E-12
-        ENumber esqrt_3_div_2(489061, 564719); // approx up to 10E-12
         Eigen::Matrix2d cH;
         cH << std::sqrt(3.), -std::sqrt(3.) / 2., 0., -3. / 2.;
         ENumber coordsX;
@@ -260,10 +258,6 @@ namespace hedra
         std::vector<ENumber> coordsX(3);
         std::vector<ENumber> coordsY(3);
 
-        ENumber esqrt_3(978122, 564719); // approx up to 10E-12
-        ENumber esqrt_3_div_2(489061, 564719); // approx up to 10E-12
-        ENumber esqrt_3_div_4(489061, 1129438); // approx up to 10E-12
-
         Eigen::MatrixXd facePC(3, UV.cols()); // PC.cols == 2
         for (int i = 0; i < 3; i++) {
           facePC.row(i) = cH.inverse() * UV.row(FUV(ti, i)).transpose(); // back to the axial coordinates
@@ -323,7 +317,330 @@ namespace hedra
         }
         insert(paramArr, lineCurves.begin(), lineCurves.end());
       }
+      EPoint2D Hex2Euc(const EPoint2D & uv)
+      {
+        ENumber cx = uv.x() * ENumber(3) - uv.y() * ENumber(3, 2);
+        ENumber cy = uv.y() * esqrt_3_div_2;
+        //ENumber cx = uv.x() * ENumber(3);
+        //ENumber cy = uv.x() * ENumber(3, 2) + uv.y() * esqrt_3_div_2;
+        return EPoint2D(cx, cy);
+      }
 
+      EPoint2D Hex2Euc(ENumber u, ENumber v)
+      {
+        ENumber cx = u * ENumber(3) - v * ENumber(3, 2);
+        ENumber cy =v * esqrt_3_div_2;
+        //ENumber cx = u * ENumber(3);
+        //ENumber cy = u * ENumber(3, 2) + v * esqrt_3_div_2;
+        return EPoint2D(cx, cy);
+      }
+
+
+      EPoint2D Euc2Hex(const EPoint2D & uv)
+      {
+        ENumber v = uv.y() *  ENumber(2) / esqrt_3;
+        ENumber u = (uv.x() + ENumber(3, 2) * v) / ENumber(3);
+        //ENumber u = uv.x() * ENumber(1, 3);
+        //ENumber v = uv.y() * ENumber(2) / esqrt_3 - uv.x() / esqrt_3;
+
+        return EPoint2D(u, v);
+      }
+
+      bool CircleSegmentIntersect(ENumber x1, ENumber y1, ENumber x2, ENumber y2, ENumber cx, ENumber cy, ENumber cr )
+      {
+        EVector2D v1=EPoint2D(x1,y1)-EPoint2D(cx,cy);
+        EVector2D v2=EPoint2D(x2,y2)-EPoint2D(cx,cy);
+
+        ENumber v1n =v1.squared_length();
+        ENumber v2n = v2.squared_length();
+        ENumber v1v2=v1*v2;
+
+        ENumber a=v1n+v2n-2*v1v2;
+        ENumber b=-2*v2n+2*v1v2;
+        ENumber c=v2n-cr;
+
+        ENumber delta= b * b - 4 * a * c;
+        if (delta<0)
+          return false;
+
+        ENumber t1=(-b-CGAL::sqrt(CGAL::to_double(delta)))/(2*a);
+        ENumber t2=(-b+CGAL::sqrt(CGAL::to_double(delta)))/(2*a);
+
+        return (((t1>=ENumber(-1, 3))&&(t1<=ENumber(4, 3)))||((t2>=ENumber(-1, 3))&&(t2<=ENumber(4, 3))));  //leaving some margins for conservative checks
+      }
+
+      bool DoIntersect(ETriangle2D& t, ECircle2D& c)
+      {
+        //checking if actual intersection
+        for (int i=0;i<3;i++)
+          if (CircleSegmentIntersect(t.vertex(i).x(),t.vertex(i).y(),t.vertex((i+1)%3).x(),t.vertex((i+1)%3).y(), c.center().x(), c.center().y(), c.squared_radius()))
+            return true;
+
+        //checking if circle includes triangle
+        bool insides[3];
+        for (int i=0;i<3;i++)
+          insides[i]=((t.vertex(i)-c.center()).squared_length() <= ENumber(4, 3) * c.squared_radius());
+
+        if (insides[0] && insides[1] && insides[2])
+          return true;  //circle includes triangle
+
+        //checking if triangle includes center
+        ENumber BaryCoords[3];
+        ENumber Area=t.area();
+        for (int i=0;i<3;i++)
+          BaryCoords[i] = ETriangle2D(c.center(), t.vertex((i+1)%3), t.vertex((i+2)%3)).area()/Area;
+
+        for (int i=0;i<3;i++)
+          if ((BaryCoords[i]<-ENumber(1, 3))||(BaryCoords[i]> ENumber(13, 10)))
+            return false;   //center is outside
+
+        return true;
+      }
+
+      class HexSegment{
+      public:
+        std::pair<int,int> Source;
+        std::pair<int,int> Target;
+
+        HexSegment(int su, int sv, int tu, int tv){
+          std::pair<int,int> s(su,sv);
+          std::pair<int,int> t(tu,tv);
+          if (s<t){
+            Source=s;
+            Target=t;
+          }else{
+            Source=t;
+            Target=s;
+          }
+        }
+
+        ~HexSegment(){}
+
+        const bool operator<(const HexSegment& h) const {
+          if (Source<h.Source) return false;
+          if (Source>h.Source) return true;
+
+          if (Target<h.Target) return false;
+          if (Target>h.Target) return true;
+
+          return false; //both are equal
+        }
+
+      };
+
+      void hex_grid_pattern(const std::vector<EPoint2D> & eUV, const Eigen::MatrixXi & FUV, const int resolution, const int ti, Arr_2 & paramArr)
+      {
+        std::set<std::pair<int, int> > circles;
+        std::queue<std::pair<int, int> > circleQueue;
+        std::vector<EPoint2D> UVs(3);
+        //inserting adjacent circles to vertices
+          for (int i = 0; i < 3; i++) {
+            UVs[i] = eUV[FUV(ti, i)];
+            EPoint2D uv = Euc2Hex(eUV[FUV(ti, i)]);
+
+          //if it intersects, the neighbors should in line as well
+          for (int j =-4; j <= 4; j++)
+            for (int k = -4; k <= 4; k++)
+              circleQueue.push(std::pair<int,int>(std::floor(CGAL::to_double(uv.x())) + i, std::floor(CGAL::to_double(uv.y())) + j));
+        }
+        ETriangle2D currTri(UVs[0], UVs[1], UVs[2]);
+
+        std::set<std::pair<int, int> > rejects;
+
+        while (!circleQueue.empty())
+        {
+          auto currPair = circleQueue.front();
+          circleQueue.pop();
+          if ((circles.find(std::pair<int, int>(currPair.first, currPair.second)) != circles.end()) || (rejects.find(std::pair<int, int>(currPair.first, currPair.second)) != rejects.end()))
+            continue;
+          ECircle2D CurrCircle(Hex2Euc(currPair.first, currPair.second), esqrt_3);
+
+          if (!DoIntersect(currTri, CurrCircle)) {
+            rejects.insert(currPair);
+            continue;
+          } else {
+            circles.insert(currPair);
+          }
+
+          //if it intersects, the neighbors should in line as well
+          for (int i=-4;i<=4;i++)
+            for (int j=-4;j<=4;j++){
+              if ((i==0)&&(j==0))
+                continue;
+              circleQueue.push(std::pair<int, int>(currPair.first + i, currPair.second + j));
+            }
+        }
+        //creating the primal hexagon grid (actually triangular grid)
+        std::vector<Segment2> PrimalSegments;
+        std::set<HexSegment> HexSegments;
+        for (auto ci = circles.begin(); ci != circles.end(); ci++) {
+          HexSegments.insert(HexSegment(ci->first,ci->second,ci->first+1,ci->second+1));
+          HexSegments.insert(HexSegment(ci->first,ci->second,ci->first+1,ci->second+2));
+          HexSegments.insert(HexSegment(ci->first,ci->second,ci->first,ci->second+1));
+          HexSegments.insert(HexSegment(ci->first,ci->second,ci->first-1,ci->second-1));
+          HexSegments.insert(HexSegment(ci->first,ci->second,ci->first-1,ci->second-2));
+          HexSegments.insert(HexSegment(ci->first,ci->second,ci->first,ci->second-1));
+        }
+
+        for (auto hi = HexSegments.begin(); hi != HexSegments.end(); hi++)  {
+          EPoint2D p1=Hex2Euc(hi->Source.first, hi->Source.second);
+          EPoint2D p2=Hex2Euc(hi->Target.first, hi->Target.second);
+
+          PrimalSegments.push_back(Segment2(p1,p2));
+        }
+
+        Arr_2 primalArr, ModifyLinesArr[3];
+        CGAL::insert_non_intersecting_curves(primalArr, PrimalSegments.begin(), PrimalSegments.end());
+
+        //creating the modifying lines arrangement
+        Face_handle uf1 = ModifyLinesArr[0].unbounded_face();
+        Face_handle uf2 = ModifyLinesArr[1].unbounded_face();
+        Face_handle uf3 = ModifyLinesArr[2].unbounded_face();
+        for (auto ci = circles.begin(); ci != circles.end(); ci++) {
+          EPoint2D SourcePos1i(ci->first+ ENumber(1, 3), ci->second);
+          EPoint2D TargetPos1i(ci->first + ENumber(1, 6), ci->second);
+
+          EPoint2D SourcePos2i(ci->first - ENumber(1, 3), ci->second);
+          EPoint2D TargetPos2i(ci->first - ENumber(1,6), ci->second);
+
+          EPoint2D SourcePos3i(ci->first + ENumber(2, 3), ci->second + ENumber(1));
+          EPoint2D TargetPos3i(ci->first + ENumber(1, 3), ci->second + ENumber(1, 2));
+
+          EPoint2D SourcePos4i(ci->first - ENumber(2, 3), ci->second - ENumber(1));
+          EPoint2D TargetPos4i(ci->first - ENumber(1, 3), ci->second - ENumber(1, 2));
+
+          EPoint2D SourcePos5i(ci->first - ENumber(1, 3), ci->second - ENumber(1));
+          EPoint2D TargetPos5i(ci->first - ENumber(1, 6), ci->second - ENumber(1, 2));
+
+          EPoint2D SourcePos6i(ci->first + ENumber(1, 3), ci->second + ENumber(1));
+          EPoint2D TargetPos6i(ci->first + ENumber(1, 6), ci->second + ENumber(1, 2));
+
+          EPoint2D MidPos1i=SourcePos1i+(TargetPos1i-SourcePos1i) / ENumber(2);
+          EPoint2D MidPos2i=SourcePos2i+(TargetPos2i-SourcePos2i) / ENumber(2);
+          EPoint2D MidPos3i=SourcePos3i+(TargetPos3i-SourcePos3i) / ENumber(2);
+          EPoint2D MidPos4i=SourcePos4i+(TargetPos4i-SourcePos4i) / ENumber(2);
+          EPoint2D MidPos5i=SourcePos5i+(TargetPos5i-SourcePos5i) / ENumber(2);
+          EPoint2D MidPos6i=SourcePos6i+(TargetPos6i-SourcePos6i) / ENumber(2);
+
+          EPoint2D SourcePos1=Hex2Euc(SourcePos1i.x(),SourcePos1i.y());
+          EPoint2D SourcePos2=Hex2Euc(SourcePos2i.x(),SourcePos2i.y());
+          EPoint2D SourcePos3=Hex2Euc(SourcePos3i.x(),SourcePos3i.y());
+          EPoint2D SourcePos4=Hex2Euc(SourcePos4i.x(),SourcePos4i.y());
+          EPoint2D SourcePos5=Hex2Euc(SourcePos5i.x(),SourcePos5i.y());
+          EPoint2D SourcePos6=Hex2Euc(SourcePos6i.x(),SourcePos6i.y());
+          EPoint2D TargetPos1=Hex2Euc(TargetPos1i.x(),TargetPos1i.y());
+          EPoint2D TargetPos2=Hex2Euc(TargetPos2i.x(),TargetPos2i.y());
+          EPoint2D TargetPos3=Hex2Euc(TargetPos3i.x(),TargetPos3i.y());
+          EPoint2D TargetPos4=Hex2Euc(TargetPos4i.x(),TargetPos4i.y());
+          EPoint2D TargetPos5=Hex2Euc(TargetPos5i.x(),TargetPos5i.y());
+          EPoint2D TargetPos6=Hex2Euc(TargetPos6i.x(),TargetPos6i.y());
+
+          EPoint2D MidPos1=Hex2Euc(MidPos1i.x(),MidPos1i.y());
+          EPoint2D MidPos2=Hex2Euc(MidPos2i.x(),MidPos2i.y());
+          EPoint2D MidPos3=Hex2Euc(MidPos3i.x(),MidPos3i.y());
+          EPoint2D MidPos4=Hex2Euc(MidPos4i.x(),MidPos4i.y());
+          EPoint2D MidPos5=Hex2Euc(MidPos5i.x(),MidPos5i.y());
+          EPoint2D MidPos6=Hex2Euc(MidPos6i.x(),MidPos6i.y());
+
+          Vertex_handle vs1=ModifyLinesArr[0].insert_in_face_interior(SourcePos1, uf1);
+          Vertex_handle vs2=ModifyLinesArr[0].insert_in_face_interior(SourcePos2, uf1);
+          Vertex_handle vs3=ModifyLinesArr[1].insert_in_face_interior(SourcePos3, uf2);
+          Vertex_handle vs4=ModifyLinesArr[1].insert_in_face_interior(SourcePos4, uf2);
+          Vertex_handle vs5=ModifyLinesArr[2].insert_in_face_interior(SourcePos5, uf3);
+          Vertex_handle vs6=ModifyLinesArr[2].insert_in_face_interior(SourcePos6, uf3);
+          Vertex_handle vt1=ModifyLinesArr[0].insert_in_face_interior(TargetPos1, uf1);
+          Vertex_handle vt2=ModifyLinesArr[0].insert_in_face_interior(TargetPos2, uf1);
+          Vertex_handle vt3=ModifyLinesArr[1].insert_in_face_interior(TargetPos3, uf2);
+          Vertex_handle vt4=ModifyLinesArr[1].insert_in_face_interior(TargetPos4, uf2);
+          Vertex_handle vt5=ModifyLinesArr[2].insert_in_face_interior(TargetPos5, uf3);
+          Vertex_handle vt6=ModifyLinesArr[2].insert_in_face_interior(TargetPos6, uf3);
+          Vertex_handle vm1=ModifyLinesArr[0].insert_in_face_interior(MidPos1, uf1);
+          Vertex_handle vm2=ModifyLinesArr[0].insert_in_face_interior(MidPos2, uf1);
+          Vertex_handle vm3=ModifyLinesArr[1].insert_in_face_interior(MidPos3, uf2);
+          Vertex_handle vm4=ModifyLinesArr[1].insert_in_face_interior(MidPos4, uf2);
+          Vertex_handle vm5=ModifyLinesArr[2].insert_in_face_interior(MidPos5, uf3);
+          Vertex_handle vm6=ModifyLinesArr[2].insert_in_face_interior(MidPos6, uf3);
+
+          vs1->data()=vs2->data()=vs3->data()=vs4->data()=vs5->data()=vs6->data()=0;
+          vm1->data()=vm2->data()=vm3->data()=vm4->data()=vm5->data()=vm6->data()=1;
+          vt1->data()=vt2->data()=vt3->data()=vt4->data()=vt5->data()=vt6->data()=2;
+
+          ModifyLinesArr[0].insert_at_vertices(Segment2(SourcePos1, MidPos1), vs1, vm1);
+          ModifyLinesArr[0].insert_at_vertices(Segment2(TargetPos1, MidPos1), vt1, vm1);
+          ModifyLinesArr[0].insert_at_vertices(Segment2(SourcePos2, MidPos2), vs2, vm2);
+          ModifyLinesArr[0].insert_at_vertices(Segment2(TargetPos2, MidPos2), vt2, vm2);
+          ModifyLinesArr[1].insert_at_vertices(Segment2(SourcePos3, MidPos3), vs3, vm3);
+          ModifyLinesArr[1].insert_at_vertices(Segment2(TargetPos3, MidPos3), vt3, vm3);
+          ModifyLinesArr[1].insert_at_vertices(Segment2(SourcePos4, MidPos4), vs4, vm4);
+          ModifyLinesArr[1].insert_at_vertices(Segment2(TargetPos4, MidPos4), vt4, vm4);
+          ModifyLinesArr[2].insert_at_vertices(Segment2(SourcePos5, MidPos5), vs5, vm5);
+          ModifyLinesArr[2].insert_at_vertices(Segment2(TargetPos5, MidPos5), vt5, vm5);
+          ModifyLinesArr[2].insert_at_vertices(Segment2(SourcePos6, MidPos6), vs6, vm6);
+          ModifyLinesArr[2].insert_at_vertices(Segment2(TargetPos6, MidPos6), vt6, vm6);
+        }
+
+        //creating dual arrangement
+
+        //faces - > dual vertices
+        int ID=0;
+        std::vector<Segment2> DualCurves;
+        std::vector<Point2> FaceCenters(primalArr.number_of_faces());
+        for (Face_iterator fi= primalArr.faces_begin(); fi != primalArr.faces_end(); fi++){
+          if (fi->is_fictitious()||fi->is_unbounded())
+            continue;
+          Ccb_halfedge_circulator hc=fi->outer_ccb ();
+          Point2 Location;
+          for (int i=0;i<3;i++){
+            Location=Location+(hc->source()->point()-CGAL::ORIGIN);
+            hc++;
+          }
+
+          Location=CGAL::ORIGIN+(Location-CGAL::ORIGIN)/ENumber(3);
+
+          //removing potential small faces by projecting point with barycentric coordinates which are very close to 0 or 1 with respect to the triangle
+          //finding out barycentric coordinates
+          ENumber BaryValues[3];
+          ENumber Sum=0;
+          for (int i=0;i<3;i++){
+            EPoint2D u = EPoint2D(Location.x(), Location.y());
+            EPoint2D v = EPoint2D(UVs[(i+1)%3].x(), UVs[(i+1)%3].y());
+            EPoint2D w = EPoint2D(UVs[(i+2)%3].x(), UVs[(i+2)%3].y());
+            ETriangle2D t(u, v, w);
+            BaryValues[i]=t.area();
+            Sum+=BaryValues[i];
+          }
+          for (int i=0;i<3;i++)
+            BaryValues[i]/=Sum;
+
+          for (int i=0;i<3;i++){
+            double dBary=to_double(BaryValues[i]);
+            if (abs(dBary)<0.00005){
+              BaryValues[i]=ENumber(0);
+              ENumber SumOthers=(BaryValues[(i+1)%3]+BaryValues[(i+2)%3]);
+              BaryValues[(i+1)%3]/=SumOthers;
+              BaryValues[(i+2)%3]/=SumOthers;
+              Location=CGAL::ORIGIN+((EPoint2D(UVs[(i+1)%3].x(), UVs[(i+1)%3].y()) - CGAL::ORIGIN) * BaryValues[(i+1)%3]+(EPoint2D(UVs[(i+2)%3].x(), UVs[(i+2)%3].y())-CGAL::ORIGIN)*BaryValues[(i+2)%3]);
+            }
+          }
+
+          FaceCenters[ID]=Location;
+          fi->data()=ID++;
+
+        }
+
+        //edges -> dual edges
+        for (Edge_iterator ei=primalArr.edges_begin();ei!=primalArr.edges_end();ei++){
+          //counter++;
+          if (ei->face()->is_fictitious()||ei->face()->is_unbounded()||ei->twin()->face()->is_fictitious()||ei->twin()->face()->is_unbounded())
+            continue;
+
+          Point2 p1=FaceCenters[ei->face()->data()];
+          Point2 p2=FaceCenters[ei->twin()->face()->data()];
+          Segment2 s2(p1,p2);
+          DualCurves.push_back(s2);
+        }
+        CGAL::insert_non_intersecting_curves(paramArr, DualCurves.begin(), DualCurves.end());
+      }
 
     struct PointPair{
         int Index1, Index2;
@@ -1393,11 +1710,21 @@ namespace hedra
         std::vector<int> overlayFace2Triangle; // triangle face ID or -1 when a face is unbounded
 
         std::vector<EPoint3D> HE3D;
+        std::vector<EPoint2D> exactUVs(UV.rows());
 
         double minrange = (UV.colwise().maxCoeff() - UV.colwise().minCoeff()).minCoeff();
         // find the denominator for the  rational number representation
-        int resolution = std::pow(10., std::ceil(std::log10(100000. / minrange)));
-        std::cout << resolution << std::endl;
+        int resolution = std::pow(10., std::ceil(std::log10(1000. / minrange)));
+
+        for (int i = 0; i < UV.rows(); i++)
+        {
+          EPoint2D  uv = paramCoord2texCoord(UV.row(i), resolution);
+          //if(N == 6)
+            uv = EPoint2D(uv.x() * esqrt_3 - uv.y() * esqrt_3_div_2, uv.y() * ENumber(-3,2));
+          exactUVs[i] = EPoint2D(uv.y(), uv.x());
+        }
+
+
         if(F.cols() != 3)
           throw std::runtime_error("libhedra::generate_mesh: For now, it works only with triangular faces!");
 
@@ -1412,23 +1739,11 @@ namespace hedra
            */
           for (int j = 0; j < 3; j++)
           {
-            Eigen::RowVectorXd UV1 = UV.row(FUV(ti, j));
-            Eigen::RowVectorXd UV2 = UV.row(FUV(ti, (j + 1) % 3));
-
             //avoid degenerate cases in non-bijective parametrizations
-
             Halfedge_handle he;
-            if(N == 4) {
-              if(paramCoord2texCoord(UV1, resolution) == paramCoord2texCoord(UV2, resolution))
-                throw std::runtime_error("libhedra::generate_mesh: Only bijective parametrizations are supported, sorry!");
-              he = CGAL::insert_non_intersecting_curve(triangleArr, Segment2(paramCoord2texCoord(UV1, resolution),
-                                                                             paramCoord2texCoord(UV2, resolution)));
-            }
-            else if (N == 6) {
-              if(paramCoord2texCoordHex(UV1, resolution) == paramCoord2texCoordHex(UV2, resolution))
-                throw std::runtime_error("libhedra::generate_mesh: Only bijective parametrizations are supported, sorry!");
-              he = CGAL::insert_non_intersecting_curve(triangleArr, Segment2(paramCoord2texCoordHex(UV1, resolution), paramCoord2texCoordHex(UV2, resolution)));
-            }
+            if(exactUVs[FUV(ti, j)] == exactUVs[FUV(ti, (j + 1) % 3)])
+              throw std::runtime_error("libhedra::generate_mesh: Only bijective parametrizations are supported, sorry!");
+            he = CGAL::insert_non_intersecting_curve(triangleArr, Segment2(exactUVs[FUV(ti, j)], exactUVs[FUV(ti, (j + 1) % 3)]));
             ArrEdgeData aed;
             aed.isParam = false;
             aed.origEdge = FE(ti, j);
@@ -1446,12 +1761,12 @@ namespace hedra
           }
 
           // generate a respective grid pattern
-          if (N == 4)
-            square_grid_pattern(UV, FUV, resolution, ti, paramArr);
-          else if (N == 6)
-            tri_grid_pattern(UV, FUV, resolution, ti, paramArr);
-          else
-            throw std::runtime_error("libhedra::generate_mesh: Only the square and hexagonal grids are supported!");
+          //if (N == 4)
+          //  square_grid_pattern(UV, FUV, resolution, ti, paramArr);
+          //else if (N == 6)
+            hex_grid_pattern(exactUVs, FUV, resolution, ti, paramArr);
+          //else
+          //  throw std::runtime_error("libhedra::generate_mesh: Only the square and hexagonal grids are supported!");
 
           //Constructing the overlay arrangement
           Overlay_traits ot;
@@ -1567,14 +1882,12 @@ namespace hedra
               /* we start from + 1 and + 2 and not 0 and 1 because the weight of vertex v0 is the area/sum of the piece orthogonal to it
                * see the later loop where we multiply with BaryValues
                */
-              Eigen::RowVectorXd UV2 = UV.row(FUV(ti, (i + 1) % 3));
-              Eigen::RowVectorXd UV3 = UV.row(FUV(ti, (i + 2) % 3));
 
               ETriangle2D t;
-              if(N == 4)
-                t = ETriangle2D(vi->point(), paramCoord2texCoord(UV2, resolution),  paramCoord2texCoord(UV3, resolution));
-              else if (N == 6)
-                t = ETriangle2D(vi->point(), paramCoord2texCoordHex(UV2, resolution),  paramCoord2texCoordHex(UV3, resolution));
+              //if(N == 4)
+               // t = ETriangle2D(vi->point(), paramCoord2texCoord(UV2, resolution),  paramCoord2texCoord(UV3, resolution));
+              //else if (N == 6)
+                t = ETriangle2D(vi->point(), exactUVs[FUV(ti, (i + 1) % 3)], exactUVs[FUV(ti, (i + 2) % 3)]);
               BaryValues[i] = t.area();
               Sum += BaryValues[i];
             }

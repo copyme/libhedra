@@ -57,6 +57,7 @@ namespace hedra
       typedef Kernel::Triangle_3 Triangle3D;
       typedef Kernel::Triangle_2 Triangle2D;
       typedef Kernel::Circle_2 Circle2D;
+      typedef EKernel::Circle_2 ECircle2D;
       typedef EKernel::Point_2 EPoint2D;
       typedef EKernel::Point_3 EPoint3D;
       typedef EKernel::Triangle_2 ETriangle2D;
@@ -67,7 +68,12 @@ namespace hedra
       typedef Kernel::Aff_transformation_3 Transform3D;
       typedef CGAL::Polyhedron_3<Kernel> Polyhedron3D;
       typedef CGAL::Polygon_2<Kernel>    Polygon2D;
-      
+
+      const ENumber esqrt_3(978122, 564719); // approx up to 10E-12
+      const ENumber esqrt_3_div_2(489061, 564719); // approx up to 10E-12
+      const ENumber esqrt_3_div_4(489061, 1129438); // approx up to 10E-12
+
+
       void normalize(Vector3D& v){
         v=v/sqrt(squared_distance(Point3D(0,0,0)+v,Point3D(0,0,0)));
       }
