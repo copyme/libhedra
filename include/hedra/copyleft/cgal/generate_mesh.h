@@ -169,39 +169,19 @@ namespace hedra
 
       Point2 paramCoord2texCoordHex(const Eigen::RowVectorXd & paramCoord, int resolution)
       {
-
-        Eigen::Matrix2d cH;
-        cH << std::sqrt(3.), -std::sqrt(3.) / 2., 0., -3. / 2.;
-        ENumber coordsX;
-        ENumber coordsY;
         Eigen::Vector2d vals(paramCoord(0), paramCoord(1)); // PC.cols == 2
-        vals = cH.inverse() * (vals.eval() * resolution); // back to the axial coordinates
-          // round in the cube coordinates
+        // round in the cube coordinates
         Eigen::Vector3d cube(vals(0), -vals(1), -vals(0) + vals(1));
         Eigen::Vector3d cubeR(std::round(vals(0)), std::round(vals(1)), std::round(-vals(0) + vals(1)));
         Eigen::Vector3d diff(std::fabs(cubeR(0) - cube(0)), std::fabs(cubeR(1) - cube(1)), std::fabs(cubeR(2) - cube(2)));
 
-          if(diff(0) > diff(1) && diff(0) > diff(2))
-          {
-            vals(0) = (cubeR(1) - cubeR(2));
-            vals(1) = cubeR(1);
-          }
-          else if (diff(1) > diff(2))
-          {
-            vals(0) = cubeR(0);
-            vals(1) = (cubeR(0) + cubeR(2));
-          }
-          else
-          {
-            vals(0) = cubeR(0);
-            vals(1) = cubeR(1);
-          }
-          ENumber u = ENumber((int)vals(0)) * esqrt_3 - ENumber((int)vals(1)) * esqrt_3_div_2;
-          ENumber v = ENumber((int)vals(1)) * ENumber(-3, 2);
-
-       return Point2(u / ENumber(resolution), v / ENumber(resolution));
+        if(diff(0) > diff(1) && diff(0) > diff(2))
+          return Point2((cubeR(1) - cubeR(2)) / ENumber(resolution), cubeR(1) / ENumber(resolution));
+        else if (diff(1) > diff(2))
+          return Point2(cubeR(0) / ENumber(resolution), (cubeR(0) + cubeR(2)) / ENumber(resolution));
+        else
+          return Point2(cubeR(0) / ENumber(resolution),cubeR(1) / ENumber(resolution));
       }
-
 
       //for now doing quad (u,v,-u -v) only!
       Point2 paramCoord2texCoord(const Eigen::RowVectorXd & paramCoord, int resolution)
@@ -1078,20 +1058,20 @@ namespace hedra
            ecurr = nextH(ecurr);
          } while (ebegin != ecurr);
 
-//         if (counter <= 3 && !borderV[HV(i)] && !borderV[HV(nextH(i))]) {
-//           std::cout << "check before remove face!" << std::endl;
-//           checkMesh(HV, VH, HF, FH, twinH, nextH, prevH, isParamHE, validHE, validV, validF);
-//           removeFace(HF(i), i, HV, VH, HF, FH, twinH, nextH, prevH, validHE, validV, validF, HE2origEdges, borderV, log);
-//           std::cout << "check after remove face!" << std::endl;
-//           checkMesh(HV, VH, HF, FH, twinH, nextH, prevH, isParamHE, validHE, validV, validF);
-//         }
-//         else {
+         if (counter <= 3 && !borderV[HV(i)] && !borderV[HV(nextH(i))]) {
+           std::cout << "check before remove face!" << std::endl;
+           checkMesh(HV, VH, HF, FH, twinH, nextH, prevH, isParamHE, validHE, validV, validF);
+           removeFace(HF(i), i, HV, VH, HF, FH, twinH, nextH, prevH, validHE, validV, validF, HE2origEdges, borderV, log);
+           std::cout << "check after remove face!" << std::endl;
+           checkMesh(HV, VH, HF, FH, twinH, nextH, prevH, isParamHE, validHE, validV, validF);
+         }
+         else {
            std::cout << "check before remove edge!" << std::endl;
            checkMesh(HV, VH, HF, FH, twinH, nextH, prevH, isParamHE, validHE, validV, validF);
          removeEdge(i, HV, VH, HF, FH, twinH, nextH, prevH, validHE, validV, validF, HE2origEdges, borderV, log);
            std::cout << "check after remove edge!" << std::endl;
            checkMesh(HV, VH, HF, FH, twinH, nextH, prevH, isParamHE, validHE, validV, validF);
-         //}
+         }
        }
 
        std::vector<EPoint3D> newVertices(numNewVertices);
@@ -1355,7 +1335,8 @@ namespace hedra
                      Eigen::VectorXi & VH,
                      std::vector<bool> & isParamVertex,
                      std::vector<int> & HE2origEdges,
-                     std::vector<bool> & isParamHE)
+                     std::vector<bool> & isParamHE,
+                     double closeTolerance)
       {
         //edges
         for (int hid = validHE.size() - 1; hid >= 0; hid--) {
@@ -1482,6 +1463,22 @@ namespace hedra
             if (HV(k) > vid)
               HV(k)--;
         }
+
+//        //merge close vertices
+//        std::vector<int> removedV;
+//        for(int i = 0; i < currV.rows(); i++)
+//        {
+//          for(int j = 0; j < currV.rows(); j++)
+//          {
+//            if(i == j)
+//              continue;
+//            if((currV.row(i) - currV.row(j)).norm() < closeTolerance)
+//            {
+//
+//            }
+//          }
+//        }
+
       }
 
       void WalkBoundary(int &CurrEdge,
@@ -1661,7 +1658,7 @@ namespace hedra
         std::cout << "check after removing degenerete faces 2" << std::endl;
        // checkMesh(HV, VH, HF, FH, twinH, nextH, prevH, isParamHE, validHE, validV, validF);
 
-        cleanMesh(validHE, validV, validF, twinH, prevH, nextH, currV, HF, FH, HV, VH, isParamVertex, HE2origEdges, isParamHE);
+        cleanMesh(validHE, validV, validF, twinH, prevH, nextH, currV, HF, FH, HV, VH, isParamVertex, HE2origEdges, isParamHE, closeTolerance);
         log.close();
       }
 
@@ -1720,13 +1717,14 @@ namespace hedra
 
         for (int i = 0; i < UV.rows(); i++)
         {
-          EPoint2D  uv = paramCoord2texCoord(UV.row(i), resolution);
-          //if(N == 6)
-
-
-          uv = EPoint2D(uv.x() * esqrt_3 - uv.y() * esqrt_3_div_2, uv.y() * ENumber(-3,2));
-          exactUVs[i] = EPoint2D(uv.x() * esqrt_3, uv.y() * esqrt_3);
-          //exactUVs[i] = uv;
+          EPoint2D  uv;
+          if(N == 4)
+            exactUVs[i] = paramCoord2texCoord(UV.row(i), resolution);
+          else if(N == 6) {
+            uv = paramCoord2texCoordHex(UV.row(i), resolution);
+            uv = EPoint2D(uv.x() * esqrt_3 - uv.y() * esqrt_3_div_2, uv.y() * ENumber(-3, 2));
+            exactUVs[i] = EPoint2D(uv.x() * esqrt_3, uv.y() * esqrt_3);
+          }
         }
 
 
@@ -1916,7 +1914,7 @@ namespace hedra
         }
 
         //mesh unification
-        //stitch_boundaries2(HE3D, resolution, V, EF, innerEdges, currV, EV, VH, HV, HF, FH, nextH, prevH, twinH, isParamVertex, HE2origEdges, isParamHE, overlayFace2Triangle);
+        stitch_boundaries2(HE3D, resolution, V, EF, innerEdges, currV, EV, VH, HV, HF, FH, nextH, prevH, twinH, isParamVertex, HE2origEdges, isParamHE, overlayFace2Triangle);
 
         //consolidation
         newV = currV;
