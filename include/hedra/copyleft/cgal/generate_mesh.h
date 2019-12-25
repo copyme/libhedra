@@ -169,18 +169,18 @@ namespace hedra
 
       Point2 paramCoord2texCoordHex(const Eigen::RowVectorXd & paramCoord, int resolution)
       {
-        Eigen::Vector2d vals(paramCoord(0), paramCoord(1)); // PC.cols == 2
+        Eigen::Vector2d vals(paramCoord(0) * resolution, paramCoord(1) * resolution); // PC.cols == 2
         // round in the cube coordinates
         Eigen::Vector3d cube(vals(0), -vals(1), -vals(0) + vals(1));
         Eigen::Vector3d cubeR(std::round(vals(0)), std::round(vals(1)), std::round(-vals(0) + vals(1)));
         Eigen::Vector3d diff(std::fabs(cubeR(0) - cube(0)), std::fabs(cubeR(1) - cube(1)), std::fabs(cubeR(2) - cube(2)));
 
         if(diff(0) > diff(1) && diff(0) > diff(2))
-          return Point2((cubeR(1) - cubeR(2)) / ENumber(resolution), cubeR(1) / ENumber(resolution));
+          return Point2(ENumber((cubeR(1) - cubeR(2)), resolution), ENumber(cubeR(1), resolution));
         else if (diff(1) > diff(2))
-          return Point2(cubeR(0) / ENumber(resolution), (cubeR(0) + cubeR(2)) / ENumber(resolution));
+          return Point2(ENumber(cubeR(0), resolution), ENumber((cubeR(0) + cubeR(2)), resolution));
         else
-          return Point2(cubeR(0) / ENumber(resolution),cubeR(1) / ENumber(resolution));
+          return Point2(ENumber(cubeR(0), resolution),ENumber(cubeR(1), resolution));
       }
 
       //for now doing quad (u,v,-u -v) only!
